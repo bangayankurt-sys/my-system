@@ -1,0 +1,809 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Kurt // Systems</title>
+<script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-app-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-auth-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore-compat.js"></script>
+<style>
+body{margin:0; padding:16px; background:#0B0D10; min-height:100vh; display:flex; align-items:flex-start; justify-content:center;}
+@media (max-width:700px){ body{padding:0;} #app{border-radius:0; min-height:100vh;} #sidebar{width:64px; min-width:64px;} #sidebar .brand{display:none;} .navbtn span:not(.dot){display:none;} }
+@import url('https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@500;600;700&family=Inter:wght@400;500;600&family=JetBrains+Mono:wght@400;500;600&display=swap');
+
+:root{
+  --bg:#0A0A0A;
+  --surface:#141414;
+  --surface2:#1D1D1D;
+  --line:#333333;
+  --text:#F2F2F2;
+  --muted:#8C8C8C;
+  --amber:#E63946;
+  --cyan:#F2F2F2;
+  --violet:#FF6B6B;
+  --danger:#FF3B30;
+}
+*{box-sizing:border-box;}
+#app{
+  font-family:'Inter',sans-serif;
+  background:var(--bg);
+  color:var(--text);
+  display:flex;
+  min-height:640px;
+  border-radius:10px;
+  overflow:hidden;
+  border:1px solid var(--line);
+}
+.mono{font-family:'JetBrains Mono',monospace;}
+.display{font-family:'Space Grotesk',sans-serif;}
+
+/* Sidebar */
+#sidebar{
+  width:180px;
+  min-width:180px;
+  background:var(--surface);
+  border-right:1px solid var(--line);
+  padding:18px 10px;
+  display:flex;
+  flex-direction:column;
+  gap:2px;
+}
+#sidebar .brand{
+  font-family:'Space Grotesk',sans-serif;
+  font-weight:700;
+  font-size:13px;
+  letter-spacing:0.08em;
+  color:var(--muted);
+  padding:0 10px 16px 10px;
+  text-transform:uppercase;
+}
+.navbtn{
+  display:flex;
+  align-items:center;
+  gap:9px;
+  padding:9px 10px;
+  border-radius:6px;
+  cursor:pointer;
+  color:var(--muted);
+  font-size:13px;
+  font-weight:500;
+  border:1px solid transparent;
+  transition:background .15s, color .15s;
+  user-select:none;
+}
+.navbtn:hover{background:var(--surface2); color:var(--text);}
+.navbtn.active{background:var(--surface2); color:var(--text); border-color:var(--line);}
+.navbtn .dot{width:6px;height:6px;border-radius:50%;background:currentColor;opacity:.5;flex-shrink:0;}
+.navbtn.active .dot{opacity:1;}
+
+/* Main */
+#main{flex:1; display:flex; flex-direction:column; min-width:0;}
+#telemetry{
+  display:flex;
+  gap:0;
+  border-bottom:1px solid var(--line);
+  background:linear-gradient(180deg, var(--surface2), var(--surface));
+  overflow-x:auto;
+}
+.tstat{
+  padding:10px 18px;
+  border-right:1px solid var(--line);
+  white-space:nowrap;
+}
+.tstat .tlabel{font-size:9px; color:var(--muted); letter-spacing:0.08em; text-transform:uppercase;}
+.tstat .tval{font-family:'JetBrains Mono',monospace; font-size:14px; font-weight:600; margin-top:2px;}
+
+#content{flex:1; overflow-y:auto; padding:24px 28px;}
+h1.pagetitle{font-family:'Space Grotesk',sans-serif; font-size:20px; font-weight:700; margin:0 0 4px 0;}
+.pagesub{color:var(--muted); font-size:12.5px; margin:0 0 20px 0;}
+
+.card{
+  background:var(--surface);
+  border:1px solid var(--line);
+  border-radius:8px;
+  padding:16px 18px;
+  margin-bottom:14px;
+}
+.card h3{font-family:'Space Grotesk',sans-serif; font-size:13px; margin:0 0 12px 0; color:var(--text); font-weight:600; text-transform:uppercase; letter-spacing:.04em;}
+
+.row{display:flex; gap:10px; flex-wrap:wrap;}
+.col{flex:1; min-width:140px;}
+
+label{font-size:11px; color:var(--muted); display:block; margin-bottom:4px; text-transform:uppercase; letter-spacing:.03em;}
+input, select, textarea{
+  width:100%;
+  background:var(--bg);
+  border:1px solid var(--line);
+  color:var(--text);
+  padding:8px 10px;
+  border-radius:5px;
+  font-family:'Inter',sans-serif;
+  font-size:13px;
+  outline:none;
+}
+input:focus, select:focus, textarea:focus{border-color:var(--cyan);}
+textarea{resize:vertical; min-height:70px;}
+
+button{
+  background:var(--cyan);
+  color:#0C1013;
+  border:none;
+  padding:9px 16px;
+  border-radius:5px;
+  font-weight:600;
+  font-size:13px;
+  cursor:pointer;
+  font-family:'Inter',sans-serif;
+}
+button:hover{filter:brightness(1.08);}
+button.secondary{background:transparent; color:var(--muted); border:1px solid var(--line);}
+button.secondary:hover{color:var(--text); border-color:var(--muted);}
+button.danger{background:transparent; color:var(--danger); border:1px solid var(--danger);}
+
+table{width:100%; border-collapse:collapse; font-size:12.5px;}
+th{text-align:left; color:var(--muted); font-weight:500; padding:6px 8px; border-bottom:1px solid var(--line); text-transform:uppercase; font-size:10.5px; letter-spacing:.03em;}
+td{padding:7px 8px; border-bottom:1px solid var(--line);}
+tr:last-child td{border-bottom:none;}
+
+.tag{
+  display:inline-block;
+  background:var(--surface2);
+  border:1px solid var(--line);
+  color:var(--muted);
+  padding:2px 8px;
+  border-radius:20px;
+  font-size:10.5px;
+  margin:2px 3px 2px 0;
+}
+.pr-badge{background:var(--amber); color:#1A1200; padding:2px 7px; border-radius:4px; font-size:10px; font-weight:700; margin-left:6px;}
+
+.empty{color:var(--muted); font-size:12.5px; text-align:center; padding:24px 0;}
+
+.jrnl-entry{border-bottom:1px solid var(--line); padding:12px 0;}
+.jrnl-entry:last-child{border-bottom:none;}
+.jrnl-date{font-family:'JetBrains Mono',monospace; font-size:11px; color:var(--cyan); margin-bottom:4px;}
+.jrnl-text{font-size:13px; line-height:1.5; white-space:pre-wrap;}
+
+.chip-row{display:flex; flex-wrap:wrap; gap:6px; margin-top:6px;}
+.chip{
+  padding:5px 10px; border-radius:20px; border:1px solid var(--line); font-size:12px; cursor:pointer; color:var(--muted);
+}
+.chip.on{background:var(--violet); color:#14071C; border-color:var(--violet); font-weight:600;}
+.chip-x{margin-left:7px; opacity:.55; font-weight:700;}
+.chip-x:hover{opacity:1; color:var(--danger);}
+
+.moodbtns{display:flex; gap:6px;}
+.moodbtn{width:38px; height:38px; border-radius:6px; border:1px solid var(--line); background:var(--bg); cursor:pointer; font-size:16px; display:flex; align-items:center; justify-content:center; color:var(--muted);}
+.moodbtn.sel{border-color:var(--violet); background:var(--surface2); color:var(--text);}
+
+.smallmuted{color:var(--muted); font-size:11px;}
+
+.type-Brush{color:var(--cyan);} .type-Action{color:var(--amber);} .type-Texture{color:var(--violet);} .type-Plugin{color:#CFCFCF;} .type-Reference{color:#FF8A80;} .type-Tutorial{color:#8C8C8C;}
+
+.svgchart{width:100%; height:80px;}
+
+::-webkit-scrollbar{width:8px; height:8px;}
+::-webkit-scrollbar-thumb{background:var(--line); border-radius:4px;}
+</style>
+</head>
+<body>
+
+<div id="app">
+  <div id="sidebar">
+    <div class="brand">Kurt // Systems</div>
+    <div class="navbtn active" data-view="dashboard"><span class="dot"></span>Dashboard</div>
+    <div class="navbtn" data-view="gym"><span class="dot"></span>Gym Progress</div>
+    <div class="navbtn" data-view="assets"><span class="dot"></span>PS Assets</div>
+    <div class="navbtn" data-view="habits"><span class="dot"></span>Habits/Mood/Sleep</div>
+    <div class="navbtn" data-view="journal"><span class="dot"></span>Journal</div>
+  </div>
+  <div id="main">
+    <div id="telemetry"></div>
+    <div id="content"></div>
+  </div>
+</div>
+
+<script>
+(function(){
+
+// ============================================================
+// FIREBASE CONFIG — paste your project's config here.
+// Get this from: Firebase Console > Project Settings > Your apps > Web app
+// Until you paste real values, the app runs fully offline (local-only), same as before.
+// ============================================================
+const firebaseConfig = {
+  apiKey: "AIzaSyAbH-qW0ew-U5F6MqMssAU-m5Qh2ZxJqgw",
+  authDomain: "ax-tracker.firebaseapp.com",
+  projectId: "ax-tracker",
+  storageBucket: "ax-tracker.firebasestorage.app",
+  messagingSenderId: "500810258417",
+  appId: "1:500810258417:web:64e3dfa33f99e5a10a1650"
+};
+
+let cloudEnabled = false;
+let auth = null, db = null, currentUser = null, remoteDoc = null;
+
+try{
+  if(firebaseConfig.apiKey && firebaseConfig.apiKey.indexOf('PASTE_') !== 0){
+    firebase.initializeApp(firebaseConfig);
+    auth = firebase.auth();
+    db = firebase.firestore();
+    cloudEnabled = true;
+  }
+}catch(e){ console.error('Firebase init failed', e); cloudEnabled = false; }
+
+const FIELD_MAP = {
+  'gym:entries':'gym',
+  'assets:list':'assets',
+  'habits:names':'habitNames',
+  'habits:entries':'habitEntries',
+  'journal:entries':'journal'
+};
+
+// ---------- storage helpers (local + optional cloud sync) ----------
+async function loadArr(key){
+  try{
+    if(cloudEnabled && remoteDoc){
+      const field = FIELD_MAP[key];
+      if(remoteDoc[field] !== undefined){
+        localStorage.setItem(key, JSON.stringify(remoteDoc[field]));
+        return remoteDoc[field];
+      }
+    }
+    const raw = localStorage.getItem(key);
+    return raw ? JSON.parse(raw) : [];
+  }catch(e){ return []; }
+}
+async function saveArr(key, val){
+  localStorage.setItem(key, JSON.stringify(val));
+  try{
+    if(cloudEnabled && currentUser){
+      const field = FIELD_MAP[key];
+      if(remoteDoc) remoteDoc[field] = val;
+      await db.collection('users').doc(currentUser.uid).set({[field]: val}, {merge:true});
+    }
+  }catch(e){ console.error('cloud save failed', key, e); }
+}
+function uid(){ return Math.random().toString(36).slice(2,10); }
+function todayStr(){ return new Date().toISOString().slice(0,10); }
+function fmtDate(d){
+  const dt = new Date(d+'T00:00:00');
+  return dt.toLocaleDateString('en-US',{month:'short', day:'numeric', year:'numeric'});
+}
+function daysAgo(n){ const d=new Date(); d.setDate(d.getDate()-n); return d.toISOString().slice(0,10); }
+
+// ---------- state ----------
+let state = {
+  gym: [],       // {id,date,exercise,weight,reps,unit}
+  assets: [],    // {id,name,type,tags:[],notes,link}
+  habitNames: ['Trained','Slept 7h+','Tracked macros','No junk food'],
+  habitEntries: [], // {id,date,checked:[...names], mood, sleep}
+  journal: []    // {id,date,text}
+};
+
+async function loadAll(){
+  const [g,a,hn,he,j] = await Promise.all([
+    loadArr('gym:entries'),
+    loadArr('assets:list'),
+    loadArr('habits:names'),
+    loadArr('habits:entries'),
+    loadArr('journal:entries')
+  ]);
+  state.gym = g;
+  state.assets = a;
+  state.habitNames = (hn && hn.length) ? hn : state.habitNames;
+  state.habitEntries = he;
+  state.journal = j;
+}
+
+// ---------- e1RM ----------
+function epley(weight, reps){ return weight * (1 + reps/30); }
+
+// ---------- SVG mini line chart ----------
+function lineChart(values, color, w=560, h=80){
+  if(!values.length) return `<div class="empty">Not enough data yet</div>`;
+  const max = Math.max(...values, 1);
+  const min = Math.min(...values, 0);
+  const range = (max-min) || 1;
+  const pad = 8;
+  const step = values.length>1 ? (w-pad*2)/(values.length-1) : 0;
+  const pts = values.map((v,i)=>{
+    const x = pad + i*step;
+    const y = h - pad - ((v-min)/range)*(h-pad*2);
+    return `${x},${y}`;
+  }).join(' ');
+  const dots = values.map((v,i)=>{
+    const x = pad + i*step;
+    const y = h - pad - ((v-min)/range)*(h-pad*2);
+    return `<circle cx="${x}" cy="${y}" r="2.5" fill="${color}"/>`;
+  }).join('');
+  return `<svg class="svgchart" viewBox="0 0 ${w} ${h}" preserveAspectRatio="none">
+    <polyline points="${pts}" fill="none" stroke="${color}" stroke-width="2" vector-effect="non-scaling-stroke"/>
+    ${dots}
+  </svg>`;
+}
+
+// ---------- telemetry strip ----------
+function renderTelemetry(){
+  const el = document.getElementById('telemetry');
+  // streak: consecutive days with a habit entry ending today or yesterday
+  let streak = 0;
+  const entriesByDate = {};
+  state.habitEntries.forEach(e=> entriesByDate[e.date]=e);
+  let cursor = new Date();
+  while(true){
+    const ds = cursor.toISOString().slice(0,10);
+    if(entriesByDate[ds]){ streak++; cursor.setDate(cursor.getDate()-1); }
+    else break;
+  }
+  // last PR
+  let lastPR = '—';
+  if(state.gym.length){
+    const byExercise = {};
+    state.gym.forEach(g=>{
+      const e1 = epley(g.weight, g.reps);
+      if(!byExercise[g.exercise] || e1 > byExercise[g.exercise].e1) byExercise[g.exercise] = {e1, date:g.date};
+    });
+    const sorted = Object.entries(byExercise).sort((a,b)=> new Date(b[1].date)-new Date(a[1].date));
+    if(sorted.length) lastPR = `${sorted[0][0]} ${sorted[0][1].e1.toFixed(1)}kg`;
+  }
+  // avg sleep last 7d
+  const last7 = state.habitEntries.filter(e=> new Date(e.date) >= new Date(daysAgo(7)));
+  const avgSleep = last7.length ? (last7.reduce((s,e)=> s+(Number(e.sleep)||0),0)/last7.length).toFixed(1) : '—';
+  // journal count
+  const jCount = state.journal.length;
+
+  el.innerHTML = `
+    <div class="tstat"><div class="tlabel">Streak</div><div class="tval" style="color:var(--amber)">${streak}d</div></div>
+    <div class="tstat"><div class="tlabel">Best e1RM</div><div class="tval" style="color:var(--cyan)">${lastPR}</div></div>
+    <div class="tstat"><div class="tlabel">Avg Sleep 7D</div><div class="tval" style="color:var(--violet)">${avgSleep}h</div></div>
+    <div class="tstat"><div class="tlabel">Journal Entries</div><div class="tval">${jCount}</div></div>
+    <div class="tstat"><div class="tlabel">PS Assets</div><div class="tval">${state.assets.length}</div></div>
+  `;
+}
+
+// ---------- DASHBOARD ----------
+function viewDashboard(){
+  const recentGym = [...state.gym].sort((a,b)=> new Date(b.date)-new Date(a.date)).slice(0,3);
+  const recentJournal = [...state.journal].sort((a,b)=> new Date(b.date)-new Date(a.date)).slice(0,1)[0];
+  const today = todayStr();
+  const todayHabit = state.habitEntries.find(e=>e.date===today);
+
+  return `
+    <h1 class="pagetitle">Dashboard</h1>
+    <p class="pagesub">${fmtDate(today)} — quick snapshot</p>
+
+    <div class="row">
+      <div class="col card">
+        <h3>Recent lifts</h3>
+        ${recentGym.length ? recentGym.map(g=>`
+          <div style="display:flex;justify-content:space-between;font-size:12.5px;padding:5px 0;border-bottom:1px solid var(--line)">
+            <span>${g.exercise}</span>
+            <span class="mono">${g.weight}kg × ${g.reps}</span>
+          </div>`).join('') : `<div class="empty">No lifts logged yet</div>`}
+      </div>
+      <div class="col card">
+        <h3>Today's check-in</h3>
+        ${todayHabit ? `
+          <div class="smallmuted">Mood: ${['','😞','😕','😐','🙂','😄'][todayHabit.mood]||'—'} &nbsp; Sleep: ${todayHabit.sleep||'—'}h</div>
+          <div class="chip-row">${todayHabit.checked.map(c=>`<span class="tag">${c}</span>`).join('') || '<span class="smallmuted">No habits checked</span>'}</div>
+        ` : `<div class="empty">Not logged yet today — go to Habits tab</div>`}
+      </div>
+    </div>
+
+    <div class="card">
+      <h3>Latest journal entry</h3>
+      ${recentJournal ? `<div class="jrnl-date">${fmtDate(recentJournal.date)}</div><div class="jrnl-text">${recentJournal.text.slice(0,240)}${recentJournal.text.length>240?'…':''}</div>` : `<div class="empty">Nothing written yet</div>`}
+    </div>
+  `;
+}
+
+// ---------- GYM ----------
+function bestE1RMPerExercise(){
+  const map = {};
+  state.gym.forEach(g=>{
+    const e1 = epley(g.weight,g.reps);
+    if(!map[g.exercise]) map[g.exercise]=[];
+    map[g.exercise].push({...g, e1});
+  });
+  return map;
+}
+
+function viewGym(){
+  const grouped = bestE1RMPerExercise();
+  const exNames = Object.keys(grouped);
+  return `
+    <h1 class="pagetitle">Gym Progress</h1>
+    <p class="pagesub">Log sets, track estimated 1RM trend, catch stalls</p>
+
+    <div class="card">
+      <h3>Log a set</h3>
+      <div class="row">
+        <div class="col"><label>Exercise</label><input id="g-exercise" placeholder="e.g. Bench Press"/></div>
+        <div class="col"><label>Weight (kg)</label><input id="g-weight" type="number" step="0.5" placeholder="60"/></div>
+        <div class="col"><label>Reps</label><input id="g-reps" type="number" placeholder="8"/></div>
+        <div class="col"><label>Date</label><input id="g-date" type="date" value="${todayStr()}"/></div>
+      </div>
+      <div style="margin-top:12px"><button id="g-add">Add set</button></div>
+    </div>
+
+    ${exNames.length===0? `<div class="card"><div class="empty">No sets logged yet</div></div>` :
+      exNames.map(name=>{
+        const sets = grouped[name].sort((a,b)=> new Date(a.date)-new Date(b.date));
+        const best = Math.max(...sets.map(s=>s.e1));
+        const latest = sets[sets.length-1];
+        const isPR = latest.e1 === best && sets.length>1;
+        return `
+        <div class="card">
+          <h3>${name} ${isPR?'<span class="pr-badge">NEW PR</span>':''}</h3>
+          <div class="smallmuted" style="margin-bottom:8px">Best est. 1RM: <span class="mono" style="color:var(--amber)">${best.toFixed(1)}kg</span> &nbsp;•&nbsp; ${sets.length} sets logged</div>
+          ${lineChart(sets.map(s=>s.e1), '#E63946')}
+          <table style="margin-top:10px">
+            <tr><th>Date</th><th>Weight</th><th>Reps</th><th>Est. 1RM</th><th></th></tr>
+            ${sets.slice(-6).reverse().map(s=>`<tr><td>${fmtDate(s.date)}</td><td>${s.weight}kg</td><td>${s.reps}</td><td class="mono">${s.e1.toFixed(1)}kg</td><td><button class="danger" data-del-gym="${s.id}" style="padding:3px 9px; font-size:10.5px;">Delete</button></td></tr>`).join('')}
+          </table>
+        </div>`;
+      }).join('')
+    }
+  `;
+}
+
+// ---------- ASSETS ----------
+function viewAssets(filterType, search){
+  filterType = filterType || 'all';
+  search = (search||'').toLowerCase();
+  const filtered = state.assets.filter(a=>{
+    const typeOk = filterType==='all' || a.type===filterType;
+    const searchOk = !search || a.name.toLowerCase().includes(search) || a.tags.join(' ').toLowerCase().includes(search);
+    return typeOk && searchOk;
+  });
+  const types = ['Brush','Action','Texture','Plugin','Reference','Tutorial'];
+
+  return `
+    <h1 class="pagetitle">Photoshop Asset Manager</h1>
+    <p class="pagesub">Catalog brushes, actions, textures, references and tutorials</p>
+
+    <div class="card">
+      <h3>Add asset</h3>
+      <div class="row">
+        <div class="col"><label>Name</label><input id="a-name" placeholder="e.g. Frequency Separation Action"/></div>
+        <div class="col"><label>Type</label>
+          <select id="a-type">${types.map(t=>`<option value="${t}">${t}</option>`).join('')}</select>
+        </div>
+      </div>
+      <div class="row" style="margin-top:10px">
+        <div class="col"><label>Tags (comma separated)</label><input id="a-tags" placeholder="retouching, skin, portrait"/></div>
+        <div class="col"><label>Link (optional)</label><input id="a-link" placeholder="https://..."/></div>
+      </div>
+      <div style="margin-top:10px"><label>Notes</label><textarea id="a-notes" placeholder="When/how to use this"></textarea></div>
+      <div style="margin-top:12px"><button id="a-add">Add asset</button></div>
+    </div>
+
+    <div class="card">
+      <div class="row" style="align-items:end; margin-bottom:14px">
+        <div class="col"><label>Search</label><input id="a-search" placeholder="search name or tag..." value="${search}"/></div>
+        <div class="col"><label>Filter type</label>
+          <select id="a-filter">
+            <option value="all" ${filterType==='all'?'selected':''}>All types</option>
+            ${types.map(t=>`<option value="${t}" ${filterType===t?'selected':''}>${t}</option>`).join('')}
+          </select>
+        </div>
+      </div>
+      ${filtered.length===0? `<div class="empty">No assets match</div>` :
+        filtered.slice().reverse().map(a=>`
+          <div style="border-bottom:1px solid var(--line); padding:10px 0;">
+            <div style="display:flex; justify-content:space-between; align-items:center;">
+              <div><span class="type-${a.type}" style="font-weight:600; font-size:13px;">${a.type}</span> &nbsp; <strong style="font-size:13.5px">${a.name}</strong></div>
+              <button class="danger" data-del-asset="${a.id}" style="padding:4px 10px; font-size:11px;">Remove</button>
+            </div>
+            ${a.notes? `<div class="smallmuted" style="margin-top:4px">${a.notes}</div>`:''}
+            ${a.link? `<div style="margin-top:4px"><a href="${a.link}" target="_blank" style="color:var(--cyan); font-size:12px;">${a.link}</a></div>`:''}
+            <div class="chip-row">${a.tags.map(t=>`<span class="tag">${t}</span>`).join('')}</div>
+          </div>
+        `).join('')
+      }
+    </div>
+  `;
+}
+
+// ---------- HABITS / MOOD / SLEEP ----------
+function viewHabits(){
+  const today = todayStr();
+  const existing = state.habitEntries.find(e=>e.date===today);
+  const checked = existing ? existing.checked : [];
+  const mood = existing ? existing.mood : 0;
+  const sleep = existing ? existing.sleep : '';
+
+  const last14 = [...state.habitEntries].sort((a,b)=> new Date(a.date)-new Date(b.date)).slice(-14);
+
+  return `
+    <h1 class="pagetitle">Habits, Mood & Sleep</h1>
+    <p class="pagesub">Daily check-in — takes 15 seconds</p>
+
+    <div class="card">
+      <h3>Today — ${fmtDate(today)}</h3>
+      <label>Habits</label>
+      <div class="chip-row" id="h-chips">
+        ${state.habitNames.map(n=>`<span class="chip ${checked.includes(n)?'on':''}" data-habit="${n}">${n}<span class="chip-x" data-remove-habit="${n}">×</span></span>`).join('')}
+      </div>
+      <div style="margin-top:14px"><label>Add a new habit to track</label>
+        <div class="row"><div class="col"><input id="h-newhabit" placeholder="e.g. Read 20 min"/></div><div><button id="h-addhabit" class="secondary">Add</button></div></div>
+      </div>
+
+      <div class="row" style="margin-top:16px">
+        <div class="col">
+          <label>Mood</label>
+          <div class="moodbtns" id="h-moods">
+            ${['😞','😕','😐','🙂','😄'].map((e,i)=>`<div class="moodbtn ${mood===i+1?'sel':''}" data-mood="${i+1}">${e}</div>`).join('')}
+          </div>
+        </div>
+        <div class="col"><label>Sleep (hours)</label><input id="h-sleep" type="number" step="0.5" value="${sleep}" placeholder="7.5"/></div>
+      </div>
+      <div style="margin-top:14px"><button id="h-save">Save today's check-in</button></div>
+    </div>
+
+    <div class="card">
+      <h3>Mood trend (last ${last14.length})</h3>
+      ${lineChart(last14.map(e=>e.mood||0), '#F2F2F2')}
+    </div>
+    <div class="card">
+      <h3>Sleep trend (hours, last ${last14.length})</h3>
+      ${lineChart(last14.map(e=>Number(e.sleep)||0), '#FF6B6B')}
+    </div>
+
+    <div class="card">
+      <h3>Check-in history</h3>
+      ${state.habitEntries.length===0 ? `<div class="empty">No check-ins logged yet</div>` :
+        [...state.habitEntries].sort((a,b)=> new Date(b.date)-new Date(a.date)).map(e=>`
+          <div style="display:flex; justify-content:space-between; align-items:center; border-bottom:1px solid var(--line); padding:8px 0;">
+            <div>
+              <div class="mono" style="font-size:12px; color:var(--cyan)">${fmtDate(e.date)}</div>
+              <div class="smallmuted">Mood: ${['','😞','😕','😐','🙂','😄'][e.mood]||'—'} &nbsp; Sleep: ${e.sleep||'—'}h &nbsp; Habits: ${e.checked.length ? e.checked.join(', ') : 'none'}</div>
+            </div>
+            <button class="danger" data-del-habit="${e.id}" style="padding:4px 10px; font-size:11px;">Delete</button>
+          </div>
+        `).join('')
+      }
+    </div>
+  `;
+}
+
+// ---------- JOURNAL ----------
+function viewJournal(){
+  const sorted = [...state.journal].sort((a,b)=> new Date(b.date)-new Date(a.date));
+  return `
+    <h1 class="pagetitle">Journal</h1>
+    <p class="pagesub">Free-write. No structure required.</p>
+
+    <div class="card">
+      <label>Date</label>
+      <input id="j-date" type="date" value="${todayStr()}" style="max-width:200px; margin-bottom:10px;"/>
+      <label>Entry</label>
+      <textarea id="j-text" style="min-height:120px" placeholder="What's on your mind..."></textarea>
+      <div style="margin-top:12px"><button id="j-add">Save entry</button></div>
+    </div>
+
+    <div class="card">
+      ${sorted.length===0? `<div class="empty">No entries yet</div>` :
+        sorted.map(e=>`
+          <div class="jrnl-entry">
+            <div style="display:flex; justify-content:space-between; align-items:center;">
+              <div class="jrnl-date">${fmtDate(e.date)}</div>
+              <button class="danger" data-del-journal="${e.id}" style="padding:3px 9px; font-size:10.5px;">Delete</button>
+            </div>
+            <div class="jrnl-text">${e.text}</div>
+          </div>
+        `).join('')
+      }
+    </div>
+  `;
+}
+
+// ---------- ROUTING ----------
+let currentView = 'dashboard';
+let assetFilter = 'all';
+let assetSearch = '';
+
+function render(){
+  renderTelemetry();
+  const content = document.getElementById('content');
+  if(currentView==='dashboard') content.innerHTML = viewDashboard();
+  else if(currentView==='gym') content.innerHTML = viewGym();
+  else if(currentView==='assets') content.innerHTML = viewAssets(assetFilter, assetSearch);
+  else if(currentView==='habits') content.innerHTML = viewHabits();
+  else if(currentView==='journal') content.innerHTML = viewJournal();
+  attachHandlers();
+  document.querySelectorAll('.navbtn').forEach(b=> b.classList.toggle('active', b.dataset.view===currentView));
+}
+
+function attachHandlers(){
+  // GYM
+  const gAdd = document.getElementById('g-add');
+  if(gAdd) gAdd.onclick = async ()=>{
+    const exercise = document.getElementById('g-exercise').value.trim();
+    const weight = parseFloat(document.getElementById('g-weight').value);
+    const reps = parseInt(document.getElementById('g-reps').value);
+    const date = document.getElementById('g-date').value || todayStr();
+    if(!exercise || !weight || !reps) return;
+    state.gym.push({id:uid(), date, exercise, weight, reps});
+    await saveArr('gym:entries', state.gym);
+    render();
+  };
+  document.querySelectorAll('[data-del-gym]').forEach(b=>{
+    b.onclick = async ()=>{
+      state.gym = state.gym.filter(g=>g.id!==b.dataset.delGym);
+      await saveArr('gym:entries', state.gym);
+      render();
+    };
+  });
+
+  // ASSETS
+  const aAdd = document.getElementById('a-add');
+  if(aAdd) aAdd.onclick = async ()=>{
+    const name = document.getElementById('a-name').value.trim();
+    const type = document.getElementById('a-type').value;
+    const tags = document.getElementById('a-tags').value.split(',').map(t=>t.trim()).filter(Boolean);
+    const link = document.getElementById('a-link').value.trim();
+    const notes = document.getElementById('a-notes').value.trim();
+    if(!name) return;
+    state.assets.push({id:uid(), name, type, tags, link, notes});
+    await saveArr('assets:list', state.assets);
+    render();
+  };
+  const aSearch = document.getElementById('a-search');
+  if(aSearch) aSearch.oninput = (e)=>{ assetSearch = e.target.value; render(); document.getElementById('a-search').focus(); document.getElementById('a-search').value=assetSearch; };
+  const aFilter = document.getElementById('a-filter');
+  if(aFilter) aFilter.onchange = (e)=>{ assetFilter = e.target.value; render(); };
+  document.querySelectorAll('[data-del-asset]').forEach(b=>{
+    b.onclick = async ()=>{
+      state.assets = state.assets.filter(a=>a.id!==b.dataset.delAsset);
+      await saveArr('assets:list', state.assets);
+      render();
+    };
+  });
+
+  // HABITS
+  document.querySelectorAll('[data-habit]').forEach(chip=>{
+    chip.onclick = ()=> chip.classList.toggle('on');
+  });
+  document.querySelectorAll('[data-remove-habit]').forEach(x=>{
+    x.onclick = async (e)=>{
+      e.stopPropagation();
+      const name = x.dataset.removeHabit;
+      state.habitNames = state.habitNames.filter(n=>n!==name);
+      await saveArr('habits:names', state.habitNames);
+      render();
+    };
+  });
+  document.querySelectorAll('[data-mood]').forEach(btn=>{
+    btn.onclick = ()=>{
+      document.querySelectorAll('[data-mood]').forEach(b=>b.classList.remove('sel'));
+      btn.classList.add('sel');
+      btn.dataset.selected = 'true';
+    };
+  });
+  const hAddHabit = document.getElementById('h-addhabit');
+  if(hAddHabit) hAddHabit.onclick = async ()=>{
+    const val = document.getElementById('h-newhabit').value.trim();
+    if(!val || state.habitNames.includes(val)) return;
+    state.habitNames.push(val);
+    await saveArr('habits:names', state.habitNames);
+    render();
+  };
+  const hSave = document.getElementById('h-save');
+  if(hSave) hSave.onclick = async ()=>{
+    const checked = Array.from(document.querySelectorAll('[data-habit].on')).map(c=>c.dataset.habit);
+    const selMood = document.querySelector('[data-mood].sel');
+    const mood = selMood ? parseInt(selMood.dataset.mood) : 0;
+    const sleep = parseFloat(document.getElementById('h-sleep').value) || 0;
+    const date = todayStr();
+    state.habitEntries = state.habitEntries.filter(e=>e.date!==date);
+    state.habitEntries.push({id:uid(), date, checked, mood, sleep});
+    await saveArr('habits:entries', state.habitEntries);
+    render();
+  };
+  document.querySelectorAll('[data-del-habit]').forEach(b=>{
+    b.onclick = async ()=>{
+      state.habitEntries = state.habitEntries.filter(e=>e.id!==b.dataset.delHabit);
+      await saveArr('habits:entries', state.habitEntries);
+      render();
+    };
+  });
+
+  // JOURNAL
+  const jAdd = document.getElementById('j-add');
+  if(jAdd) jAdd.onclick = async ()=>{
+    const date = document.getElementById('j-date').value || todayStr();
+    const text = document.getElementById('j-text').value.trim();
+    if(!text) return;
+    state.journal.push({id:uid(), date, text});
+    await saveArr('journal:entries', state.journal);
+    render();
+  };
+  document.querySelectorAll('[data-del-journal]').forEach(b=>{
+    b.onclick = async ()=>{
+      state.journal = state.journal.filter(j=>j.id!==b.dataset.delJournal);
+      await saveArr('journal:entries', state.journal);
+      render();
+    };
+  });
+
+}
+
+document.querySelectorAll('.navbtn').forEach(btn=>{
+  btn.addEventListener('click', ()=>{
+    currentView = btn.dataset.view;
+    if(currentView!=='assets'){ assetFilter='all'; assetSearch=''; }
+    render();
+  });
+});
+
+// ---------- auth UI ----------
+function showLoginScreen(){
+  let overlay = document.getElementById('login-overlay');
+  if(!overlay){
+    overlay = document.createElement('div');
+    overlay.id = 'login-overlay';
+    overlay.style.cssText = "position:fixed; inset:0; background:#0A0A0A; display:flex; align-items:center; justify-content:center; z-index:999; font-family:'Inter',sans-serif;";
+    overlay.innerHTML = `
+      <div style="text-align:center;">
+        <div style="font-family:'Space Grotesk',sans-serif; font-size:20px; font-weight:700; color:#F2F2F2; margin-bottom:6px;">Kurt // Systems</div>
+        <div style="color:#8C8C8C; font-size:13px; margin-bottom:20px;">Sign in to sync your data across devices</div>
+        <button id="google-signin-btn" style="background:#E63946; color:#fff; border:none; padding:11px 22px; border-radius:6px; font-weight:600; cursor:pointer; font-size:13px;">Sign in with Google</button>
+      </div>`;
+    document.body.appendChild(overlay);
+    document.getElementById('google-signin-btn').onclick = ()=>{
+      const provider = new firebase.auth.GoogleAuthProvider();
+      auth.signInWithPopup(provider).catch(err=>{ alert('Sign-in failed: '+err.message); });
+    };
+  }
+  overlay.style.display = 'flex';
+}
+function hideLoginScreen(){
+  const overlay = document.getElementById('login-overlay');
+  if(overlay) overlay.style.display = 'none';
+}
+function renderUserBadge(){
+  let badge = document.getElementById('user-badge');
+  if(!badge){
+    badge = document.createElement('div');
+    badge.id = 'user-badge';
+    badge.style.cssText = "margin-top:auto; padding:10px; border-top:1px solid var(--line); font-size:11px; color:var(--muted); display:flex; flex-direction:column; gap:6px;";
+    document.getElementById('sidebar').appendChild(badge);
+  }
+  badge.innerHTML = `<div style="color:var(--text); font-size:12px;">${currentUser.displayName || currentUser.email}</div><div style="cursor:pointer; color:var(--danger);" id="signout-btn">Sign out</div>`;
+  document.getElementById('signout-btn').onclick = ()=> auth.signOut();
+}
+
+// ---------- init ----------
+(async function init(){
+  if(!cloudEnabled){
+    await loadAll();
+    render();
+    return;
+  }
+  showLoginScreen();
+  auth.onAuthStateChanged(async (user)=>{
+    if(user){
+      currentUser = user;
+      try{
+        const snap = await db.collection('users').doc(user.uid).get();
+        remoteDoc = snap.exists ? snap.data() : {};
+      }catch(e){ remoteDoc = {}; }
+      hideLoginScreen();
+      renderUserBadge();
+      await loadAll();
+      render();
+    }else{
+      currentUser = null;
+      remoteDoc = null;
+      showLoginScreen();
+    }
+  });
+})();
+
+})();
+</script>
+</body>
+</html>
