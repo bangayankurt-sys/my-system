@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>Kurt B. (Tracker Tool)</title>
+<title>Kurt // Systems</title>
 <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-app-compat.js"></script>
 <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-auth-compat.js"></script>
 <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore-compat.js"></script>
@@ -194,6 +194,19 @@ tr:last-child td{border-bottom:none;}
 
 .svgchart{width:100%; height:80px;}
 
+.calgrid-labels{display:grid; grid-template-columns:repeat(7,1fr); gap:4px; margin-bottom:6px; font-size:10px; color:var(--muted); text-align:center; text-transform:uppercase;}
+.calgrid{display:grid; grid-template-columns:repeat(7,1fr); gap:4px;}
+.calcell{aspect-ratio:1; border:1px solid var(--line); border-radius:6px; padding:4px; cursor:pointer; display:flex; flex-direction:column; justify-content:space-between; background:var(--bg);}
+.calcell.empty{border:none; cursor:default; background:transparent;}
+.calcell:hover{border-color:var(--muted);}
+.calcell.selected{border-color:var(--amber); background:var(--surface2);}
+.calcell.today .calnum{color:var(--amber); font-weight:700;}
+.calnum{font-size:11px; color:var(--text);}
+.caldots{display:flex; gap:2px; flex-wrap:wrap;}
+.caldot{width:6px; height:6px; border-radius:50%; display:inline-block;}
+.cal-legend{display:flex; gap:14px; flex-wrap:wrap; font-size:11px; color:var(--muted); margin-bottom:14px; align-items:center;}
+.cal-legend .caldot{margin-right:4px;}
+
 ::-webkit-scrollbar{width:8px; height:8px;}
 ::-webkit-scrollbar-thumb{background:var(--line); border-radius:4px;}
 </style>
@@ -208,6 +221,7 @@ tr:last-child td{border-bottom:none;}
     <div class="navbtn" data-view="assets"><span class="dot"></span>PS Assets</div>
     <div class="navbtn" data-view="habits"><span class="dot"></span>Habits/Mood/Sleep</div>
     <div class="navbtn" data-view="journal"><span class="dot"></span>Journal</div>
+    <div class="navbtn" data-view="calendar"><span class="dot"></span>Calendar</div>
   </div>
   <div id="main">
     <div id="telemetry"></div>
@@ -336,9 +350,7 @@ function lineChart(values, color, w=560, h=80){
 }
 
 // ---------- telemetry strip ----------
-function renderTelemetry(){
-  const el = document.getElementById('telemetry');
-  // streak: consecutive days with a habit entry ending today or yesterday
+function computeStreak(){
   let streak = 0;
   const entriesByDate = {};
   state.habitEntries.forEach(e=> entriesByDate[e.date]=e);
@@ -348,12 +360,76 @@ function renderTelemetry(){
     if(entriesByDate[ds]){ streak++; cursor.setDate(cursor.getDate()-1); }
     else break;
   }
+  return streak;
+}
+
+function avgField(entries, field, days, excludeToday){
+  const cutoff = new Date(daysAgo(days));
+  const today = todayStr();
+  const relevant = entries.filter(e=> new Date(e.date) >= cutoff && (!excludeToday || e.date !== today));
+  if(!relevant.length) return null;
+  return relevant.reduce((s,e)=> s + (Number(e[field])||0), 0) / relevant.length;
+}
+
+function getTodayBrief(){
+  const today = todayStr();
+  const todayHabit = state.habitEntries.find(e=>e.date===today);
+  const sleepToday = todayHabit ? Number(todayHabit.sleep)||0 : null;
+  const moodToday = todayHabit ? todayHabit.mood : null;
+  const avgSleep = avgField(state.habitEntries, 'sleep', 30, true);
+  const avgMood = avgField(state.habitEntries, 'mood', 30, true);
+
+  const sortedGym = [...state.gym].sort((a,b)=> new Date(b.date)-new Date(a.date));
+  let lastWorkout = null;
+  if(sortedGym.length){
+    const lastDate = sortedGym[0].date;
+    const sameDayEntries = state.gym.filter(g=>g.date===lastDate);
+    const label = sameDayEntries.find(g=>g.session)?.session || sameDayEntries[0].exercise;
+    const days = Math.round((new Date(today) - new Date(lastDate)) / 86400000);
+    lastWorkout = { label, daysAgo: days };
+  }
+
+  return {
+    sleepToday, avgSleep,
+    sleepDelta: (sleepToday!==null && avgSleep!==null) ? sleepToday-avgSleep : null,
+    moodToday, avgMood,
+    moodDelta: (moodToday && avgMood!==null) ? moodToday-avgMood : null,
+    lastWorkout,
+    streak: computeStreak(),
+    journalToday: state.journal.some(j=>j.date===today)
+  };
+}
+
+function getWeeklySummary(){
+  const cutoff = new Date(daysAgo(7));
+  const gymDates = new Set(state.gym.filter(g=> new Date(g.date) >= cutoff).map(g=>g.date));
+  const habits7 = state.habitEntries.filter(e=> new Date(e.date) >= cutoff);
+  const journal7 = state.journal.filter(j=> new Date(j.date) >= cutoff);
+  const avgSleep7 = avgField(state.habitEntries, 'sleep', 7, false);
+  const avgMood7 = avgField(state.habitEntries, 'mood', 7, false);
+  const habitCompletion = habits7.length && state.habitNames.length
+    ? (habits7.reduce((s,e)=> s + (e.checked.length/state.habitNames.length), 0) / habits7.length) * 100
+    : null;
+  return {
+    workoutDays: gymDates.size,
+    avgSleep7, avgMood7,
+    journalCount: journal7.length,
+    habitCompletion
+  };
+}
+
+function renderTelemetry(){
+  const el = document.getElementById('telemetry');
+  const streak = computeStreak();
   // last PR
   let lastPR = 'â€”';
   if(state.gym.length){
     const byExercise = {};
     state.gym.forEach(g=>{
-      const e1 = epley(g.weight, g.reps);
+      const unit = g.unit || 'kg';
+      if(unit === 'stack') return;
+      const total = computeTotalWeight({...g, unit});
+      const e1 = epley(total, g.reps);
       if(!byExercise[g.exercise] || e1 > byExercise[g.exercise].e1) byExercise[g.exercise] = {e1, date:g.date};
     });
     const sorted = Object.entries(byExercise).sort((a,b)=> new Date(b[1].date)-new Date(a[1].date));
@@ -375,15 +451,38 @@ function renderTelemetry(){
 }
 
 // ---------- DASHBOARD ----------
+function moodEmoji(m){ return ['','ðŸ˜ž','ðŸ˜•','ðŸ˜','ðŸ™‚','ðŸ˜„'][m] || 'â€”'; }
+function deltaText(delta, unit){
+  if(delta===null || delta===undefined || isNaN(delta)) return '';
+  const rounded = Math.abs(delta) < 0.05 ? 0 : delta;
+  if(rounded === 0) return ' (same as average)';
+  const arrow = rounded > 0 ? 'â†‘' : 'â†“';
+  const color = rounded > 0 ? 'var(--text)' : 'var(--danger)';
+  return ` <span style="color:${color}">${arrow} ${Math.abs(rounded).toFixed(1)}${unit} from average</span>`;
+}
+
 function viewDashboard(){
   const recentGym = [...state.gym].sort((a,b)=> new Date(b.date)-new Date(a.date)).slice(0,3);
   const recentJournal = [...state.journal].sort((a,b)=> new Date(b.date)-new Date(a.date)).slice(0,1)[0];
   const today = todayStr();
   const todayHabit = state.habitEntries.find(e=>e.date===today);
+  const brief = getTodayBrief();
+  const weekly = getWeeklySummary();
 
   return `
     <h1 class="pagetitle">Dashboard</h1>
     <p class="pagesub">${fmtDate(today)} â€” quick snapshot</p>
+
+    <div class="card">
+      <h3>Today's Brief</h3>
+      <div style="font-size:13px; line-height:2;">
+        <div>Sleep: ${brief.sleepToday!==null ? brief.sleepToday+'h' : 'not logged'}${brief.sleepToday!==null ? deltaText(brief.sleepDelta, 'h') : ''}</div>
+        <div>Mood: ${brief.moodToday ? moodEmoji(brief.moodToday) : 'not logged'}${brief.moodToday ? deltaText(brief.moodDelta, '') : ''}</div>
+        <div>Last workout: ${brief.lastWorkout ? `${brief.lastWorkout.label} (${brief.lastWorkout.daysAgo===0?'today':brief.lastWorkout.daysAgo+'d ago'})` : 'none logged'}</div>
+        <div>Current streak: <span style="color:var(--amber)">${brief.streak} day${brief.streak===1?'':'s'}</span></div>
+        <div>Journal written: ${brief.journalToday ? 'Yes' : 'No'}</div>
+      </div>
+    </div>
 
     <div class="row">
       <div class="col card">
@@ -391,15 +490,26 @@ function viewDashboard(){
         ${recentGym.length ? recentGym.map(g=>`
           <div style="display:flex;justify-content:space-between;font-size:12.5px;padding:5px 0;border-bottom:1px solid var(--line)">
             <span>${g.exercise}</span>
-            <span class="mono">${g.weight}kg Ã— ${g.reps}</span>
+            <span class="mono">${displayWeight({...g, unit:g.unit||'kg', total:computeTotalWeight({...g, unit:g.unit||'kg'})})} Ã— ${g.reps}</span>
           </div>`).join('') : `<div class="empty">No lifts logged yet</div>`}
       </div>
       <div class="col card">
         <h3>Today's check-in</h3>
         ${todayHabit ? `
-          <div class="smallmuted">Mood: ${['','ðŸ˜ž','ðŸ˜•','ðŸ˜','ðŸ™‚','ðŸ˜„'][todayHabit.mood]||'â€”'} &nbsp; Sleep: ${todayHabit.sleep||'â€”'}h</div>
+          <div class="smallmuted">Mood: ${moodEmoji(todayHabit.mood)} &nbsp; Sleep: ${todayHabit.sleep||'â€”'}h</div>
           <div class="chip-row">${todayHabit.checked.map(c=>`<span class="tag">${c}</span>`).join('') || '<span class="smallmuted">No habits checked</span>'}</div>
         ` : `<div class="empty">Not logged yet today â€” go to Habits tab</div>`}
+      </div>
+    </div>
+
+    <div class="card">
+      <h3>This week (last 7 days)</h3>
+      <div style="font-size:13px; line-height:2;">
+        <div>Workouts logged: <span class="mono">${weekly.workoutDays}</span> day${weekly.workoutDays===1?'':'s'}</div>
+        <div>Avg sleep: <span class="mono">${weekly.avgSleep7!==null ? weekly.avgSleep7.toFixed(1)+'h' : 'â€”'}</span></div>
+        <div>Avg mood: <span class="mono">${weekly.avgMood7!==null ? weekly.avgMood7.toFixed(1)+'/5' : 'â€”'}</span></div>
+        <div>Journal entries: <span class="mono">${weekly.journalCount}</span></div>
+        <div>Habit completion: <span class="mono">${weekly.habitCompletion!==null ? Math.round(weekly.habitCompletion)+'%' : 'â€”'}</span></div>
       </div>
     </div>
 
@@ -411,19 +521,35 @@ function viewDashboard(){
 }
 
 // ---------- GYM ----------
+function computeTotalWeight(entry){
+  if(entry.unit === 'stack') return null;
+  if(entry.unit === 'kg_per_side') return (Number(entry.weightPerSide)||0)*2 + (Number(entry.barWeight)||0);
+  return Number(entry.weight)||0;
+}
+
 function bestE1RMPerExercise(){
   const map = {};
   state.gym.forEach(g=>{
-    const e1 = epley(g.weight,g.reps);
+    const unit = g.unit || 'kg';
+    const total = computeTotalWeight({...g, unit});
+    const e1 = (unit !== 'stack' && g.reps) ? epley(total, g.reps) : null;
     if(!map[g.exercise]) map[g.exercise]=[];
-    map[g.exercise].push({...g, e1});
+    map[g.exercise].push({...g, unit, total, e1});
   });
   return map;
 }
 
-function viewGym(){
+function displayWeight(s){
+  if(s.unit === 'stack') return `Stack ${s.weight}`;
+  if(s.unit === 'kg_per_side') return `${s.weightPerSide}kg/side + ${s.barWeight}kg bar = ${s.total}kg`;
+  return `${s.weight}kg`;
+}
+
+function viewGym(gymSearchTerm){
+  gymSearchTerm = (gymSearchTerm||'').toLowerCase();
   const grouped = bestE1RMPerExercise();
-  const exNames = Object.keys(grouped);
+  const exNames = Object.keys(grouped).filter(n=> !gymSearchTerm || n.toLowerCase().includes(gymSearchTerm));
+
   return `
     <h1 class="pagetitle">Gym Progress</h1>
     <p class="pagesub">Log sets, track estimated 1RM trend, catch stalls</p>
@@ -432,29 +558,72 @@ function viewGym(){
       <h3>Log a set</h3>
       <div class="row">
         <div class="col"><label>Exercise</label><input id="g-exercise" placeholder="e.g. Bench Press"/></div>
-        <div class="col"><label>Weight (kg)</label><input id="g-weight" type="number" step="0.5" placeholder="60"/></div>
+        <div class="col"><label>Weight mode</label>
+          <select id="g-unit">
+            <option value="kg">Total weight (kg)</option>
+            <option value="kg_per_side">Weight per side (kg)</option>
+            <option value="stack">Machine stack (1-20)</option>
+          </select>
+        </div>
         <div class="col"><label>Reps</label><input id="g-reps" type="number" placeholder="8"/></div>
         <div class="col"><label>Date</label><input id="g-date" type="date" value="${todayStr()}"/></div>
+      </div>
+
+      <div class="row" id="g-fields-kg" style="margin-top:10px">
+        <div class="col"><label>Weight (kg)</label><input id="g-weight" type="number" step="0.5" placeholder="60"/></div>
+      </div>
+      <div class="row" id="g-fields-perside" style="margin-top:10px; display:none;">
+        <div class="col"><label>Weight per side (kg)</label><input id="g-weight-perside" type="number" step="0.5" placeholder="20"/></div>
+        <div class="col"><label>Bar weight (kg)</label><input id="g-bar-weight" type="number" step="0.5" value="20"/></div>
+      </div>
+      <div class="row" id="g-fields-stack" style="margin-top:10px; display:none;">
+        <div class="col"><label>Stack level</label><input id="g-stack" type="number" min="1" max="20" placeholder="8"/></div>
+      </div>
+
+      <div class="row" style="margin-top:10px">
+        <div class="col"><label>Session tag (optional)</label><input id="g-session" placeholder="e.g. Push Day"/></div>
       </div>
       <div style="margin-top:12px"><button id="g-add">Add set</button></div>
     </div>
 
-    ${exNames.length===0? `<div class="card"><div class="empty">No sets logged yet</div></div>` :
+    <div class="card">
+      <label>Search exercises</label>
+      <input id="g-search" placeholder="search exercise name..." value="${gymSearchTerm}"/>
+    </div>
+
+    ${exNames.length===0? `<div class="card"><div class="empty">${gymSearchTerm ? 'No exercises match' : 'No sets logged yet'}</div></div>` :
       exNames.map(name=>{
-        const sets = grouped[name].sort((a,b)=> new Date(a.date)-new Date(b.date));
-        const best = Math.max(...sets.map(s=>s.e1));
-        const latest = sets[sets.length-1];
-        const isPR = latest.e1 === best && sets.length>1;
-        return `
-        <div class="card">
-          <h3>${name} ${isPR?'<span class="pr-badge">NEW PR</span>':''}</h3>
-          <div class="smallmuted" style="margin-bottom:8px">Best est. 1RM: <span class="mono" style="color:var(--amber)">${best.toFixed(1)}kg</span> &nbsp;â€¢&nbsp; ${sets.length} sets logged</div>
-          ${lineChart(sets.map(s=>s.e1), '#E63946')}
-          <table style="margin-top:10px">
-            <tr><th>Date</th><th>Weight</th><th>Reps</th><th>Est. 1RM</th><th></th></tr>
-            ${sets.slice(-6).reverse().map(s=>`<tr><td>${fmtDate(s.date)}</td><td>${s.weight}kg</td><td>${s.reps}</td><td class="mono">${s.e1.toFixed(1)}kg</td><td><button class="danger" data-del-gym="${s.id}" style="padding:3px 9px; font-size:10.5px;">Delete</button></td></tr>`).join('')}
-          </table>
-        </div>`;
+        const all = grouped[name].sort((a,b)=> new Date(a.date)-new Date(b.date));
+        const kgSets = all.filter(s=> s.unit !== 'stack' && s.e1 !== null);
+        const stackSets = all.filter(s=> s.unit === 'stack');
+        let block = `<div class="card"><h3>${name}</h3>`;
+
+        if(kgSets.length){
+          const best = Math.max(...kgSets.map(s=>s.e1));
+          const latest = kgSets[kgSets.length-1];
+          const isPR = latest.e1 === best && kgSets.length>1;
+          block += `
+            ${isPR? '<span class="pr-badge">NEW PR</span>' : ''}
+            <div class="smallmuted" style="margin:6px 0 8px 0">Best est. 1RM: <span class="mono" style="color:var(--amber)">${best.toFixed(1)}kg</span> &nbsp;â€¢&nbsp; ${kgSets.length} sets logged</div>
+            ${lineChart(kgSets.map(s=>s.e1), '#E63946')}
+            <table style="margin-top:10px">
+              <tr><th>Date</th><th>Weight</th><th>Reps</th><th>Est. 1RM</th><th>Session</th><th></th></tr>
+              ${kgSets.slice(-6).reverse().map(s=>`<tr><td>${fmtDate(s.date)}</td><td>${displayWeight(s)}</td><td>${s.reps}</td><td class="mono">${s.e1.toFixed(1)}kg</td><td class="smallmuted">${s.session||'â€”'}</td><td><button class="danger" data-del-gym="${s.id}" style="padding:3px 9px; font-size:10.5px;">Delete</button></td></tr>`).join('')}
+            </table>`;
+        }
+
+        if(stackSets.length){
+          block += `
+            <div class="smallmuted" style="margin:${kgSets.length?'16px':'6px'} 0 8px 0">Stack progression &nbsp;â€¢&nbsp; ${stackSets.length} sets logged (not converted to real weight)</div>
+            ${lineChart(stackSets.map(s=>Number(s.weight)), '#F2F2F2')}
+            <table style="margin-top:10px">
+              <tr><th>Date</th><th>Stack level</th><th>Reps</th><th>Session</th><th></th></tr>
+              ${stackSets.slice(-6).reverse().map(s=>`<tr><td>${fmtDate(s.date)}</td><td>${s.weight}</td><td>${s.reps}</td><td class="smallmuted">${s.session||'â€”'}</td><td><button class="danger" data-del-gym="${s.id}" style="padding:3px 9px; font-size:10.5px;">Delete</button></td></tr>`).join('')}
+            </table>`;
+        }
+
+        block += `</div>`;
+        return block;
       }).join('')
     }
   `;
@@ -611,33 +780,142 @@ function viewJournal(){
   `;
 }
 
+// ---------- CALENDAR ----------
+function viewCalendar(){
+  const monthNames = ['January','February','March','April','May','June','July','August','September','October','November','December'];
+  const firstDay = new Date(calYear, calMonth, 1);
+  const startWeekday = firstDay.getDay();
+  const daysInMonth = new Date(calYear, calMonth+1, 0).getDate();
+
+  const gymByDate = {}; state.gym.forEach(g=>{ (gymByDate[g.date] = gymByDate[g.date]||[]).push(g); });
+  const journalByDate = {}; state.journal.forEach(j=>{ (journalByDate[j.date] = journalByDate[j.date]||[]).push(j); });
+  const habitByDate = {}; state.habitEntries.forEach(e=>{ habitByDate[e.date]=e; });
+
+  let cells = '';
+  for(let i=0;i<startWeekday;i++) cells += `<div class="calcell empty"></div>`;
+  for(let d=1; d<=daysInMonth; d++){
+    const key = `${calYear}-${String(calMonth+1).padStart(2,'0')}-${String(d).padStart(2,'0')}`;
+    const hasWorkout = !!gymByDate[key];
+    const hasJournal = !!journalByDate[key];
+    const habit = habitByDate[key];
+    const goodSleep = habit && Number(habit.sleep) >= 7;
+    const perfectHabits = habit && state.habitNames.length>0 && habit.checked.length === state.habitNames.length;
+    const isSelected = selectedCalDate === key;
+    const isToday = key === todayStr();
+    let dots = '';
+    if(hasWorkout) dots += `<span class="caldot" style="background:#4CAF50"></span>`;
+    if(hasJournal) dots += `<span class="caldot" style="background:#4A90D9"></span>`;
+    if(goodSleep) dots += `<span class="caldot" style="background:#9C6ADE"></span>`;
+    if(perfectHabits) dots += `<span class="caldot" style="background:#E8C547"></span>`;
+    cells += `<div class="calcell ${isSelected?'selected':''} ${isToday?'today':''}" data-cal-date="${key}">
+      <div class="calnum">${d}</div>
+      <div class="caldots">${dots}</div>
+    </div>`;
+  }
+
+  let detail = `<div class="empty">Click a day. See everything you did.</div>`;
+  if(selectedCalDate){
+    const g = gymByDate[selectedCalDate] || [];
+    const j = journalByDate[selectedCalDate] || [];
+    const h = habitByDate[selectedCalDate];
+    detail = `
+      <div class="mono" style="color:var(--cyan); font-size:13px; margin-bottom:10px;">${fmtDate(selectedCalDate)}</div>
+      ${g.length ? `<div style="margin-bottom:10px;"><strong style="font-size:12.5px;">Workout</strong>${g.map(s=>{
+        const unit = s.unit||'kg';
+        return `<div class="smallmuted" style="margin-top:3px;">${s.exercise}: ${displayWeight({...s, unit, total:computeTotalWeight({...s, unit})})} Ã— ${s.reps}${s.session?` (${s.session})`:''}</div>`;
+      }).join('')}</div>` : ''}
+      ${h ? `<div style="margin-bottom:10px;"><strong style="font-size:12.5px;">Mood/Sleep</strong><div class="smallmuted" style="margin-top:3px;">Mood: ${moodEmoji(h.mood)} &nbsp; Sleep: ${h.sleep||'â€”'}h</div><div class="chip-row">${h.checked.map(c=>`<span class="tag">${c}</span>`).join('') || '<span class="smallmuted">No habits checked</span>'}</div></div>` : ''}
+      ${j.length ? `<div><strong style="font-size:12.5px;">Journal</strong>${j.map(e=>`<div class="jrnl-text" style="margin-top:4px;">${e.text}</div>`).join('')}</div>` : ''}
+      ${(!g.length && !h && !j.length) ? `<div class="empty">Nothing logged this day</div>` : ''}
+    `;
+  }
+
+  return `
+    <h1 class="pagetitle">Calendar</h1>
+    <p class="pagesub">See your patterns at a glance</p>
+
+    <div class="card">
+      <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:14px;">
+        <button class="secondary" id="cal-prev">â€¹ Prev</button>
+        <h3 style="margin:0; text-transform:none;">${monthNames[calMonth]} ${calYear}</h3>
+        <button class="secondary" id="cal-next">Next â€º</button>
+      </div>
+      <div class="cal-legend">
+        <span><span class="caldot" style="background:#4CAF50"></span> Workout</span>
+        <span><span class="caldot" style="background:#4A90D9"></span> Journal</span>
+        <span><span class="caldot" style="background:#9C6ADE"></span> Good sleep</span>
+        <span><span class="caldot" style="background:#E8C547"></span> Perfect habits</span>
+      </div>
+      <div class="calgrid-labels">
+        <div>Sun</div><div>Mon</div><div>Tue</div><div>Wed</div><div>Thu</div><div>Fri</div><div>Sat</div>
+      </div>
+      <div class="calgrid">${cells}</div>
+    </div>
+
+    <div class="card">
+      <h3>Day detail</h3>
+      ${detail}
+    </div>
+  `;
+}
+
 // ---------- ROUTING ----------
 let currentView = 'dashboard';
+let gymSearch = '';
 let assetFilter = 'all';
 let assetSearch = '';
+let calMonth = new Date().getMonth();
+let calYear = new Date().getFullYear();
+let selectedCalDate = null;
 
 function render(){
   renderTelemetry();
   const content = document.getElementById('content');
   if(currentView==='dashboard') content.innerHTML = viewDashboard();
-  else if(currentView==='gym') content.innerHTML = viewGym();
+  else if(currentView==='gym') content.innerHTML = viewGym(gymSearch);
   else if(currentView==='assets') content.innerHTML = viewAssets(assetFilter, assetSearch);
   else if(currentView==='habits') content.innerHTML = viewHabits();
   else if(currentView==='journal') content.innerHTML = viewJournal();
+  else if(currentView==='calendar') content.innerHTML = viewCalendar();
   attachHandlers();
   document.querySelectorAll('.navbtn').forEach(b=> b.classList.toggle('active', b.dataset.view===currentView));
 }
 
 function attachHandlers(){
   // GYM
+  const gUnit = document.getElementById('g-unit');
+  if(gUnit) gUnit.onchange = (e)=>{
+    document.getElementById('g-fields-kg').style.display = e.target.value==='kg' ? 'flex' : 'none';
+    document.getElementById('g-fields-perside').style.display = e.target.value==='kg_per_side' ? 'flex' : 'none';
+    document.getElementById('g-fields-stack').style.display = e.target.value==='stack' ? 'flex' : 'none';
+  };
   const gAdd = document.getElementById('g-add');
   if(gAdd) gAdd.onclick = async ()=>{
     const exercise = document.getElementById('g-exercise').value.trim();
-    const weight = parseFloat(document.getElementById('g-weight').value);
+    const unit = document.getElementById('g-unit').value;
     const reps = parseInt(document.getElementById('g-reps').value);
     const date = document.getElementById('g-date').value || todayStr();
-    if(!exercise || !weight || !reps) return;
-    state.gym.push({id:uid(), date, exercise, weight, reps});
+    const session = document.getElementById('g-session').value.trim();
+    if(!exercise || !reps) return;
+
+    let entry = {id:uid(), date, exercise, reps, unit, session};
+    if(unit==='kg'){
+      const weight = parseFloat(document.getElementById('g-weight').value);
+      if(!weight) return;
+      entry.weight = weight;
+    }else if(unit==='kg_per_side'){
+      const weightPerSide = parseFloat(document.getElementById('g-weight-perside').value);
+      const barWeight = parseFloat(document.getElementById('g-bar-weight').value) || 0;
+      if(!weightPerSide) return;
+      entry.weightPerSide = weightPerSide;
+      entry.barWeight = barWeight;
+    }else if(unit==='stack'){
+      const stack = parseFloat(document.getElementById('g-stack').value);
+      if(!stack) return;
+      entry.weight = stack;
+    }
+
+    state.gym.push(entry);
     await saveArr('gym:entries', state.gym);
     render();
   };
@@ -648,6 +926,13 @@ function attachHandlers(){
       render();
     };
   });
+  const gSearch = document.getElementById('g-search');
+  if(gSearch) gSearch.oninput = (e)=>{
+    gymSearch = e.target.value;
+    render();
+    const el = document.getElementById('g-search');
+    if(el){ el.focus(); el.value = gymSearch; el.setSelectionRange(el.value.length, el.value.length); }
+  };
 
   // ASSETS
   const aAdd = document.getElementById('a-add');
@@ -736,6 +1021,26 @@ function attachHandlers(){
     b.onclick = async ()=>{
       state.journal = state.journal.filter(j=>j.id!==b.dataset.delJournal);
       await saveArr('journal:entries', state.journal);
+      render();
+    };
+  });
+
+  // CALENDAR
+  const calPrev = document.getElementById('cal-prev');
+  if(calPrev) calPrev.onclick = ()=>{
+    calMonth--;
+    if(calMonth < 0){ calMonth = 11; calYear--; }
+    render();
+  };
+  const calNext = document.getElementById('cal-next');
+  if(calNext) calNext.onclick = ()=>{
+    calMonth++;
+    if(calMonth > 11){ calMonth = 0; calYear++; }
+    render();
+  };
+  document.querySelectorAll('[data-cal-date]').forEach(cell=>{
+    cell.onclick = ()=>{
+      selectedCalDate = cell.dataset.calDate;
       render();
     };
   });
