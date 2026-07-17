@@ -3,13 +3,24 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>Kurt // Systems</title>
+<title>Kurt B. (Tracker Tool)</title>
 <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-app-compat.js"></script>
 <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-auth-compat.js"></script>
 <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore-compat.js"></script>
 <style>
 body{margin:0; padding:16px; background:#0B0D10; min-height:100vh; display:flex; align-items:flex-start; justify-content:center;}
-@media (max-width:700px){ body{padding:0;} #app{border-radius:0; min-height:100vh;} #sidebar{width:64px; min-width:64px;} #sidebar .brand{display:none;} .navbtn span:not(.dot){display:none;} }
+@media (max-width:700px){
+  body{padding:0;}
+  #app{border-radius:0; min-height:100vh; flex-direction:column;}
+  #sidebar{width:100%; min-width:0; flex-direction:row; overflow-x:auto; padding:10px 8px; gap:4px; border-right:none; border-bottom:1px solid var(--line); align-items:center; -webkit-overflow-scrolling:touch;}
+  #sidebar .brand{display:none;}
+  .navbtn{white-space:nowrap; padding:8px 12px; flex-shrink:0;}
+  #user-badge{margin-top:0 !important; flex-direction:row !important; align-items:center !important; border-top:none !important; padding:8px 12px !important; white-space:nowrap; flex-shrink:0;}
+  #telemetry{overflow-x:auto;}
+  #content{padding:16px;}
+  .row{flex-direction:column;}
+  .row .col{min-width:0;}
+}
 @import url('https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@500;600;700&family=Inter:wght@400;500;600&family=JetBrains+Mono:wght@400;500;600&display=swap');
 
 :root{
@@ -208,7 +219,7 @@ tr:last-child td{border-bottom:none;}
 (function(){
 
 // ============================================================
-// FIREBASE CONFIG — paste your project's config here.
+// FIREBASE CONFIG â€” paste your project's config here.
 // Get this from: Firebase Console > Project Settings > Your apps > Web app
 // Until you paste real values, the app runs fully offline (local-only), same as before.
 // ============================================================
@@ -338,7 +349,7 @@ function renderTelemetry(){
     else break;
   }
   // last PR
-  let lastPR = '—';
+  let lastPR = 'â€”';
   if(state.gym.length){
     const byExercise = {};
     state.gym.forEach(g=>{
@@ -350,7 +361,7 @@ function renderTelemetry(){
   }
   // avg sleep last 7d
   const last7 = state.habitEntries.filter(e=> new Date(e.date) >= new Date(daysAgo(7)));
-  const avgSleep = last7.length ? (last7.reduce((s,e)=> s+(Number(e.sleep)||0),0)/last7.length).toFixed(1) : '—';
+  const avgSleep = last7.length ? (last7.reduce((s,e)=> s+(Number(e.sleep)||0),0)/last7.length).toFixed(1) : 'â€”';
   // journal count
   const jCount = state.journal.length;
 
@@ -372,7 +383,7 @@ function viewDashboard(){
 
   return `
     <h1 class="pagetitle">Dashboard</h1>
-    <p class="pagesub">${fmtDate(today)} — quick snapshot</p>
+    <p class="pagesub">${fmtDate(today)} â€” quick snapshot</p>
 
     <div class="row">
       <div class="col card">
@@ -380,21 +391,21 @@ function viewDashboard(){
         ${recentGym.length ? recentGym.map(g=>`
           <div style="display:flex;justify-content:space-between;font-size:12.5px;padding:5px 0;border-bottom:1px solid var(--line)">
             <span>${g.exercise}</span>
-            <span class="mono">${g.weight}kg × ${g.reps}</span>
+            <span class="mono">${g.weight}kg Ã— ${g.reps}</span>
           </div>`).join('') : `<div class="empty">No lifts logged yet</div>`}
       </div>
       <div class="col card">
         <h3>Today's check-in</h3>
         ${todayHabit ? `
-          <div class="smallmuted">Mood: ${['','😞','😕','😐','🙂','😄'][todayHabit.mood]||'—'} &nbsp; Sleep: ${todayHabit.sleep||'—'}h</div>
+          <div class="smallmuted">Mood: ${['','ðŸ˜ž','ðŸ˜•','ðŸ˜','ðŸ™‚','ðŸ˜„'][todayHabit.mood]||'â€”'} &nbsp; Sleep: ${todayHabit.sleep||'â€”'}h</div>
           <div class="chip-row">${todayHabit.checked.map(c=>`<span class="tag">${c}</span>`).join('') || '<span class="smallmuted">No habits checked</span>'}</div>
-        ` : `<div class="empty">Not logged yet today — go to Habits tab</div>`}
+        ` : `<div class="empty">Not logged yet today â€” go to Habits tab</div>`}
       </div>
     </div>
 
     <div class="card">
       <h3>Latest journal entry</h3>
-      ${recentJournal ? `<div class="jrnl-date">${fmtDate(recentJournal.date)}</div><div class="jrnl-text">${recentJournal.text.slice(0,240)}${recentJournal.text.length>240?'…':''}</div>` : `<div class="empty">Nothing written yet</div>`}
+      ${recentJournal ? `<div class="jrnl-date">${fmtDate(recentJournal.date)}</div><div class="jrnl-text">${recentJournal.text.slice(0,240)}${recentJournal.text.length>240?'â€¦':''}</div>` : `<div class="empty">Nothing written yet</div>`}
     </div>
   `;
 }
@@ -437,7 +448,7 @@ function viewGym(){
         return `
         <div class="card">
           <h3>${name} ${isPR?'<span class="pr-badge">NEW PR</span>':''}</h3>
-          <div class="smallmuted" style="margin-bottom:8px">Best est. 1RM: <span class="mono" style="color:var(--amber)">${best.toFixed(1)}kg</span> &nbsp;•&nbsp; ${sets.length} sets logged</div>
+          <div class="smallmuted" style="margin-bottom:8px">Best est. 1RM: <span class="mono" style="color:var(--amber)">${best.toFixed(1)}kg</span> &nbsp;â€¢&nbsp; ${sets.length} sets logged</div>
           ${lineChart(sets.map(s=>s.e1), '#E63946')}
           <table style="margin-top:10px">
             <tr><th>Date</th><th>Weight</th><th>Reps</th><th>Est. 1RM</th><th></th></tr>
@@ -519,13 +530,13 @@ function viewHabits(){
 
   return `
     <h1 class="pagetitle">Habits, Mood & Sleep</h1>
-    <p class="pagesub">Daily check-in — takes 15 seconds</p>
+    <p class="pagesub">Daily check-in â€” takes 15 seconds</p>
 
     <div class="card">
-      <h3>Today — ${fmtDate(today)}</h3>
+      <h3>Today â€” ${fmtDate(today)}</h3>
       <label>Habits</label>
       <div class="chip-row" id="h-chips">
-        ${state.habitNames.map(n=>`<span class="chip ${checked.includes(n)?'on':''}" data-habit="${n}">${n}<span class="chip-x" data-remove-habit="${n}">×</span></span>`).join('')}
+        ${state.habitNames.map(n=>`<span class="chip ${checked.includes(n)?'on':''}" data-habit="${n}">${n}<span class="chip-x" data-remove-habit="${n}">Ã—</span></span>`).join('')}
       </div>
       <div style="margin-top:14px"><label>Add a new habit to track</label>
         <div class="row"><div class="col"><input id="h-newhabit" placeholder="e.g. Read 20 min"/></div><div><button id="h-addhabit" class="secondary">Add</button></div></div>
@@ -535,7 +546,7 @@ function viewHabits(){
         <div class="col">
           <label>Mood</label>
           <div class="moodbtns" id="h-moods">
-            ${['😞','😕','😐','🙂','😄'].map((e,i)=>`<div class="moodbtn ${mood===i+1?'sel':''}" data-mood="${i+1}">${e}</div>`).join('')}
+            ${['ðŸ˜ž','ðŸ˜•','ðŸ˜','ðŸ™‚','ðŸ˜„'].map((e,i)=>`<div class="moodbtn ${mood===i+1?'sel':''}" data-mood="${i+1}">${e}</div>`).join('')}
           </div>
         </div>
         <div class="col"><label>Sleep (hours)</label><input id="h-sleep" type="number" step="0.5" value="${sleep}" placeholder="7.5"/></div>
@@ -559,7 +570,7 @@ function viewHabits(){
           <div style="display:flex; justify-content:space-between; align-items:center; border-bottom:1px solid var(--line); padding:8px 0;">
             <div>
               <div class="mono" style="font-size:12px; color:var(--cyan)">${fmtDate(e.date)}</div>
-              <div class="smallmuted">Mood: ${['','😞','😕','😐','🙂','😄'][e.mood]||'—'} &nbsp; Sleep: ${e.sleep||'—'}h &nbsp; Habits: ${e.checked.length ? e.checked.join(', ') : 'none'}</div>
+              <div class="smallmuted">Mood: ${['','ðŸ˜ž','ðŸ˜•','ðŸ˜','ðŸ™‚','ðŸ˜„'][e.mood]||'â€”'} &nbsp; Sleep: ${e.sleep||'â€”'}h &nbsp; Habits: ${e.checked.length ? e.checked.join(', ') : 'none'}</div>
             </div>
             <button class="danger" data-del-habit="${e.id}" style="padding:4px 10px; font-size:11px;">Delete</button>
           </div>
