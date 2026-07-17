@@ -233,7 +233,7 @@ tr:last-child td{border-bottom:none;}
 (function(){
 
 // ============================================================
-// FIREBASE CONFIG â€” paste your project's config here.
+// FIREBASE CONFIG &mdash; paste your project's config here.
 // Get this from: Firebase Console > Project Settings > Your apps > Web app
 // Until you paste real values, the app runs fully offline (local-only), same as before.
 // ============================================================
@@ -422,7 +422,7 @@ function renderTelemetry(){
   const el = document.getElementById('telemetry');
   const streak = computeStreak();
   // last PR
-  let lastPR = 'â€”';
+  let lastPR = '&mdash;';
   if(state.gym.length){
     const byExercise = {};
     state.gym.forEach(g=>{
@@ -437,7 +437,7 @@ function renderTelemetry(){
   }
   // avg sleep last 7d
   const last7 = state.habitEntries.filter(e=> new Date(e.date) >= new Date(daysAgo(7)));
-  const avgSleep = last7.length ? (last7.reduce((s,e)=> s+(Number(e.sleep)||0),0)/last7.length).toFixed(1) : 'â€”';
+  const avgSleep = last7.length ? (last7.reduce((s,e)=> s+(Number(e.sleep)||0),0)/last7.length).toFixed(1) : '&mdash;';
   // journal count
   const jCount = state.journal.length;
 
@@ -451,12 +451,12 @@ function renderTelemetry(){
 }
 
 // ---------- DASHBOARD ----------
-function moodEmoji(m){ return ['','ðŸ˜ž','ðŸ˜•','ðŸ˜','ðŸ™‚','ðŸ˜„'][m] || 'â€”'; }
+function moodEmoji(m){ return ['','&#128542;','&#128533;','&#128528;','&#128578;','&#128516;'][m] || '&mdash;'; }
 function deltaText(delta, unit){
   if(delta===null || delta===undefined || isNaN(delta)) return '';
   const rounded = Math.abs(delta) < 0.05 ? 0 : delta;
   if(rounded === 0) return ' (same as average)';
-  const arrow = rounded > 0 ? 'â†‘' : 'â†“';
+  const arrow = rounded > 0 ? '&uarr;' : '&darr;';
   const color = rounded > 0 ? 'var(--text)' : 'var(--danger)';
   return ` <span style="color:${color}">${arrow} ${Math.abs(rounded).toFixed(1)}${unit} from average</span>`;
 }
@@ -471,7 +471,7 @@ function viewDashboard(){
 
   return `
     <h1 class="pagetitle">Dashboard</h1>
-    <p class="pagesub">${fmtDate(today)} â€” quick snapshot</p>
+    <p class="pagesub">${fmtDate(today)} &mdash; quick snapshot</p>
 
     <div class="card">
       <h3>Today's Brief</h3>
@@ -490,15 +490,15 @@ function viewDashboard(){
         ${recentGym.length ? recentGym.map(g=>`
           <div style="display:flex;justify-content:space-between;font-size:12.5px;padding:5px 0;border-bottom:1px solid var(--line)">
             <span>${g.exercise}</span>
-            <span class="mono">${displayWeight({...g, unit:g.unit||'kg', total:computeTotalWeight({...g, unit:g.unit||'kg'})})} Ã— ${g.reps}</span>
+            <span class="mono">${displayWeight({...g, unit:g.unit||'kg', total:computeTotalWeight({...g, unit:g.unit||'kg'})})} &times; ${g.reps}</span>
           </div>`).join('') : `<div class="empty">No lifts logged yet</div>`}
       </div>
       <div class="col card">
         <h3>Today's check-in</h3>
         ${todayHabit ? `
-          <div class="smallmuted">Mood: ${moodEmoji(todayHabit.mood)} &nbsp; Sleep: ${todayHabit.sleep||'â€”'}h</div>
+          <div class="smallmuted">Mood: ${moodEmoji(todayHabit.mood)} &nbsp; Sleep: ${todayHabit.sleep||'&mdash;'}h</div>
           <div class="chip-row">${todayHabit.checked.map(c=>`<span class="tag">${c}</span>`).join('') || '<span class="smallmuted">No habits checked</span>'}</div>
-        ` : `<div class="empty">Not logged yet today â€” go to Habits tab</div>`}
+        ` : `<div class="empty">Not logged yet today &mdash; go to Habits tab</div>`}
       </div>
     </div>
 
@@ -506,16 +506,16 @@ function viewDashboard(){
       <h3>This week (last 7 days)</h3>
       <div style="font-size:13px; line-height:2;">
         <div>Workouts logged: <span class="mono">${weekly.workoutDays}</span> day${weekly.workoutDays===1?'':'s'}</div>
-        <div>Avg sleep: <span class="mono">${weekly.avgSleep7!==null ? weekly.avgSleep7.toFixed(1)+'h' : 'â€”'}</span></div>
-        <div>Avg mood: <span class="mono">${weekly.avgMood7!==null ? weekly.avgMood7.toFixed(1)+'/5' : 'â€”'}</span></div>
+        <div>Avg sleep: <span class="mono">${weekly.avgSleep7!==null ? weekly.avgSleep7.toFixed(1)+'h' : '&mdash;'}</span></div>
+        <div>Avg mood: <span class="mono">${weekly.avgMood7!==null ? weekly.avgMood7.toFixed(1)+'/5' : '&mdash;'}</span></div>
         <div>Journal entries: <span class="mono">${weekly.journalCount}</span></div>
-        <div>Habit completion: <span class="mono">${weekly.habitCompletion!==null ? Math.round(weekly.habitCompletion)+'%' : 'â€”'}</span></div>
+        <div>Habit completion: <span class="mono">${weekly.habitCompletion!==null ? Math.round(weekly.habitCompletion)+'%' : '&mdash;'}</span></div>
       </div>
     </div>
 
     <div class="card">
       <h3>Latest journal entry</h3>
-      ${recentJournal ? `<div class="jrnl-date">${fmtDate(recentJournal.date)}</div><div class="jrnl-text">${recentJournal.text.slice(0,240)}${recentJournal.text.length>240?'â€¦':''}</div>` : `<div class="empty">Nothing written yet</div>`}
+      ${recentJournal ? `<div class="jrnl-date">${fmtDate(recentJournal.date)}</div><div class="jrnl-text">${recentJournal.text.slice(0,240)}${recentJournal.text.length>240?'&hellip;':''}</div>` : `<div class="empty">Nothing written yet</div>`}
     </div>
   `;
 }
@@ -604,21 +604,21 @@ function viewGym(gymSearchTerm){
           const isPR = latest.e1 === best && kgSets.length>1;
           block += `
             ${isPR? '<span class="pr-badge">NEW PR</span>' : ''}
-            <div class="smallmuted" style="margin:6px 0 8px 0">Best est. 1RM: <span class="mono" style="color:var(--amber)">${best.toFixed(1)}kg</span> &nbsp;â€¢&nbsp; ${kgSets.length} sets logged</div>
+            <div class="smallmuted" style="margin:6px 0 8px 0">Best est. 1RM: <span class="mono" style="color:var(--amber)">${best.toFixed(1)}kg</span> &nbsp;&bull;&nbsp; ${kgSets.length} sets logged</div>
             ${lineChart(kgSets.map(s=>s.e1), '#E63946')}
             <table style="margin-top:10px">
               <tr><th>Date</th><th>Weight</th><th>Reps</th><th>Est. 1RM</th><th>Session</th><th></th></tr>
-              ${kgSets.slice(-6).reverse().map(s=>`<tr><td>${fmtDate(s.date)}</td><td>${displayWeight(s)}</td><td>${s.reps}</td><td class="mono">${s.e1.toFixed(1)}kg</td><td class="smallmuted">${s.session||'â€”'}</td><td><button class="danger" data-del-gym="${s.id}" style="padding:3px 9px; font-size:10.5px;">Delete</button></td></tr>`).join('')}
+              ${kgSets.slice(-6).reverse().map(s=>`<tr><td>${fmtDate(s.date)}</td><td>${displayWeight(s)}</td><td>${s.reps}</td><td class="mono">${s.e1.toFixed(1)}kg</td><td class="smallmuted">${s.session||'&mdash;'}</td><td><button class="danger" data-del-gym="${s.id}" style="padding:3px 9px; font-size:10.5px;">Delete</button></td></tr>`).join('')}
             </table>`;
         }
 
         if(stackSets.length){
           block += `
-            <div class="smallmuted" style="margin:${kgSets.length?'16px':'6px'} 0 8px 0">Stack progression &nbsp;â€¢&nbsp; ${stackSets.length} sets logged (not converted to real weight)</div>
+            <div class="smallmuted" style="margin:${kgSets.length?'16px':'6px'} 0 8px 0">Stack progression &nbsp;&bull;&nbsp; ${stackSets.length} sets logged (not converted to real weight)</div>
             ${lineChart(stackSets.map(s=>Number(s.weight)), '#F2F2F2')}
             <table style="margin-top:10px">
               <tr><th>Date</th><th>Stack level</th><th>Reps</th><th>Session</th><th></th></tr>
-              ${stackSets.slice(-6).reverse().map(s=>`<tr><td>${fmtDate(s.date)}</td><td>${s.weight}</td><td>${s.reps}</td><td class="smallmuted">${s.session||'â€”'}</td><td><button class="danger" data-del-gym="${s.id}" style="padding:3px 9px; font-size:10.5px;">Delete</button></td></tr>`).join('')}
+              ${stackSets.slice(-6).reverse().map(s=>`<tr><td>${fmtDate(s.date)}</td><td>${s.weight}</td><td>${s.reps}</td><td class="smallmuted">${s.session||'&mdash;'}</td><td><button class="danger" data-del-gym="${s.id}" style="padding:3px 9px; font-size:10.5px;">Delete</button></td></tr>`).join('')}
             </table>`;
         }
 
@@ -699,13 +699,13 @@ function viewHabits(){
 
   return `
     <h1 class="pagetitle">Habits, Mood & Sleep</h1>
-    <p class="pagesub">Daily check-in â€” takes 15 seconds</p>
+    <p class="pagesub">Daily check-in &mdash; takes 15 seconds</p>
 
     <div class="card">
-      <h3>Today â€” ${fmtDate(today)}</h3>
+      <h3>Today &mdash; ${fmtDate(today)}</h3>
       <label>Habits</label>
       <div class="chip-row" id="h-chips">
-        ${state.habitNames.map(n=>`<span class="chip ${checked.includes(n)?'on':''}" data-habit="${n}">${n}<span class="chip-x" data-remove-habit="${n}">Ã—</span></span>`).join('')}
+        ${state.habitNames.map(n=>`<span class="chip ${checked.includes(n)?'on':''}" data-habit="${n}">${n}<span class="chip-x" data-remove-habit="${n}">&times;</span></span>`).join('')}
       </div>
       <div style="margin-top:14px"><label>Add a new habit to track</label>
         <div class="row"><div class="col"><input id="h-newhabit" placeholder="e.g. Read 20 min"/></div><div><button id="h-addhabit" class="secondary">Add</button></div></div>
@@ -715,7 +715,7 @@ function viewHabits(){
         <div class="col">
           <label>Mood</label>
           <div class="moodbtns" id="h-moods">
-            ${['ðŸ˜ž','ðŸ˜•','ðŸ˜','ðŸ™‚','ðŸ˜„'].map((e,i)=>`<div class="moodbtn ${mood===i+1?'sel':''}" data-mood="${i+1}">${e}</div>`).join('')}
+            ${['&#128542;','&#128533;','&#128528;','&#128578;','&#128516;'].map((e,i)=>`<div class="moodbtn ${mood===i+1?'sel':''}" data-mood="${i+1}">${e}</div>`).join('')}
           </div>
         </div>
         <div class="col"><label>Sleep (hours)</label><input id="h-sleep" type="number" step="0.5" value="${sleep}" placeholder="7.5"/></div>
@@ -739,7 +739,7 @@ function viewHabits(){
           <div style="display:flex; justify-content:space-between; align-items:center; border-bottom:1px solid var(--line); padding:8px 0;">
             <div>
               <div class="mono" style="font-size:12px; color:var(--cyan)">${fmtDate(e.date)}</div>
-              <div class="smallmuted">Mood: ${['','ðŸ˜ž','ðŸ˜•','ðŸ˜','ðŸ™‚','ðŸ˜„'][e.mood]||'â€”'} &nbsp; Sleep: ${e.sleep||'â€”'}h &nbsp; Habits: ${e.checked.length ? e.checked.join(', ') : 'none'}</div>
+              <div class="smallmuted">Mood: ${['','&#128542;','&#128533;','&#128528;','&#128578;','&#128516;'][e.mood]||'&mdash;'} &nbsp; Sleep: ${e.sleep||'&mdash;'}h &nbsp; Habits: ${e.checked.length ? e.checked.join(', ') : 'none'}</div>
             </div>
             <button class="danger" data-del-habit="${e.id}" style="padding:4px 10px; font-size:11px;">Delete</button>
           </div>
@@ -822,9 +822,9 @@ function viewCalendar(){
       <div class="mono" style="color:var(--cyan); font-size:13px; margin-bottom:10px;">${fmtDate(selectedCalDate)}</div>
       ${g.length ? `<div style="margin-bottom:10px;"><strong style="font-size:12.5px;">Workout</strong>${g.map(s=>{
         const unit = s.unit||'kg';
-        return `<div class="smallmuted" style="margin-top:3px;">${s.exercise}: ${displayWeight({...s, unit, total:computeTotalWeight({...s, unit})})} Ã— ${s.reps}${s.session?` (${s.session})`:''}</div>`;
+        return `<div class="smallmuted" style="margin-top:3px;">${s.exercise}: ${displayWeight({...s, unit, total:computeTotalWeight({...s, unit})})} &times; ${s.reps}${s.session?` (${s.session})`:''}</div>`;
       }).join('')}</div>` : ''}
-      ${h ? `<div style="margin-bottom:10px;"><strong style="font-size:12.5px;">Mood/Sleep</strong><div class="smallmuted" style="margin-top:3px;">Mood: ${moodEmoji(h.mood)} &nbsp; Sleep: ${h.sleep||'â€”'}h</div><div class="chip-row">${h.checked.map(c=>`<span class="tag">${c}</span>`).join('') || '<span class="smallmuted">No habits checked</span>'}</div></div>` : ''}
+      ${h ? `<div style="margin-bottom:10px;"><strong style="font-size:12.5px;">Mood/Sleep</strong><div class="smallmuted" style="margin-top:3px;">Mood: ${moodEmoji(h.mood)} &nbsp; Sleep: ${h.sleep||'&mdash;'}h</div><div class="chip-row">${h.checked.map(c=>`<span class="tag">${c}</span>`).join('') || '<span class="smallmuted">No habits checked</span>'}</div></div>` : ''}
       ${j.length ? `<div><strong style="font-size:12.5px;">Journal</strong>${j.map(e=>`<div class="jrnl-text" style="margin-top:4px;">${e.text}</div>`).join('')}</div>` : ''}
       ${(!g.length && !h && !j.length) ? `<div class="empty">Nothing logged this day</div>` : ''}
     `;
@@ -836,9 +836,9 @@ function viewCalendar(){
 
     <div class="card">
       <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:14px;">
-        <button class="secondary" id="cal-prev">â€¹ Prev</button>
+        <button class="secondary" id="cal-prev">&lsaquo; Prev</button>
         <h3 style="margin:0; text-transform:none;">${monthNames[calMonth]} ${calYear}</h3>
-        <button class="secondary" id="cal-next">Next â€º</button>
+        <button class="secondary" id="cal-next">Next &rsaquo;</button>
       </div>
       <div class="cal-legend">
         <span><span class="caldot" style="background:#4CAF50"></span> Workout</span>
