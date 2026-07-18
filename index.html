@@ -207,6 +207,9 @@ tr:last-child td{border-bottom:none;}
 .cal-legend{display:flex; gap:14px; flex-wrap:wrap; font-size:11px; color:var(--muted); margin-bottom:14px; align-items:center;}
 .cal-legend .caldot{margin-right:4px;}
 
+.modal-overlay{position:fixed; inset:0; background:rgba(0,0,0,0.7); display:flex; align-items:center; justify-content:center; z-index:998; padding:16px;}
+.modal-box{background:var(--surface); border:1px solid var(--line); border-radius:10px; padding:20px; width:100%; max-width:440px; max-height:85vh; overflow-y:auto;}
+
 ::-webkit-scrollbar{width:8px; height:8px;}
 ::-webkit-scrollbar-thumb{background:var(--line); border-radius:4px;}
 </style>
@@ -545,6 +548,40 @@ function displayWeight(s){
   return `${s.weight}kg`;
 }
 
+function gymRowHtml(s, isKgSection){
+  const isEditing = editingGymId === s.id;
+  if(isEditing){
+    let weightFieldHtml;
+    if(s.unit === 'kg_per_side'){
+      weightFieldHtml = `<input type="number" step="0.5" id="edit-weight-perside-${s.id}" value="${s.weightPerSide}" style="width:64px;"/> /side + <input type="number" step="0.5" id="edit-barweight-${s.id}" value="${s.barWeight}" style="width:56px;"/> bar`;
+    }else{
+      weightFieldHtml = `<input type="number" step="0.5" id="edit-weight-${s.id}" value="${s.weight}" style="width:70px;"/>`;
+    }
+    return `<tr>
+      <td><input type="date" id="edit-date-${s.id}" value="${s.date}" style="width:135px;"/></td>
+      <td>${weightFieldHtml}</td>
+      <td><input type="number" id="edit-reps-${s.id}" value="${s.reps}" style="width:52px;"/></td>
+      ${isKgSection ? `<td class="mono">${s.e1.toFixed(1)}kg</td>` : ''}
+      <td class="smallmuted">${s.session||'&mdash;'}</td>
+      <td style="display:flex; gap:6px;">
+        <button data-save-gym="${s.id}" style="padding:3px 9px; font-size:10.5px;">Save</button>
+        <button class="secondary" data-cancel-gym="${s.id}" style="padding:3px 9px; font-size:10.5px;">Cancel</button>
+      </td>
+    </tr>`;
+  }
+  return `<tr>
+    <td>${fmtDate(s.date)}</td>
+    <td>${displayWeight(s)}</td>
+    <td>${s.reps}</td>
+    ${isKgSection ? `<td class="mono">${s.e1.toFixed(1)}kg</td>` : ''}
+    <td class="smallmuted">${s.session||'&mdash;'}</td>
+    <td style="display:flex; gap:6px;">
+      <button class="secondary" data-edit-gym="${s.id}" style="padding:3px 9px; font-size:10.5px;">Edit</button>
+      <button class="danger" data-del-gym="${s.id}" style="padding:3px 9px; font-size:10.5px;">Delete</button>
+    </td>
+  </tr>`;
+}
+
 function viewGym(gymSearchTerm){
   gymSearchTerm = (gymSearchTerm||'').toLowerCase();
   const grouped = bestE1RMPerExercise();
@@ -618,7 +655,7 @@ function viewGym(gymSearchTerm){
         let block = `<div class="card">
           <div style="display:flex; justify-content:space-between; align-items:center;">
             <h3 style="margin:0;">${name}</h3>
-            <button class="secondary" data-quickadd="${lastSet.id}" style="padding:5px 12px; font-size:11.5px;">+ Quick add last set</button>
+            <button class="secondary" data-quickadd="${lastSet.id}" style="padding:5px 12px; font-size:11.5px;">+ Quick add</button>
           </div>`;
 
         if(kgSets.length){
@@ -631,7 +668,7 @@ function viewGym(gymSearchTerm){
             ${lineChart(kgSets.map(s=>s.e1), '#E63946')}
             <table style="margin-top:10px">
               <tr><th>Date</th><th>Weight</th><th>Reps</th><th>Est. 1RM</th><th>Session</th><th></th></tr>
-              ${kgSets.slice(-6).reverse().map(s=>`<tr><td>${fmtDate(s.date)}</td><td>${displayWeight(s)}</td><td>${s.reps}</td><td class="mono">${s.e1.toFixed(1)}kg</td><td class="smallmuted">${s.session||'&mdash;'}</td><td><button class="danger" data-del-gym="${s.id}" style="padding:3px 9px; font-size:10.5px;">Delete</button></td></tr>`).join('')}
+              ${kgSets.slice(-6).reverse().map(s=>gymRowHtml(s, true)).join('')}
             </table>`;
         }
 
@@ -641,7 +678,7 @@ function viewGym(gymSearchTerm){
             ${lineChart(stackSets.map(s=>Number(s.weight)), '#F2F2F2')}
             <table style="margin-top:10px">
               <tr><th>Date</th><th>Stack level</th><th>Reps</th><th>Session</th><th></th></tr>
-              ${stackSets.slice(-6).reverse().map(s=>`<tr><td>${fmtDate(s.date)}</td><td>${s.weight}</td><td>${s.reps}</td><td class="smallmuted">${s.session||'&mdash;'}</td><td><button class="danger" data-del-gym="${s.id}" style="padding:3px 9px; font-size:10.5px;">Delete</button></td></tr>`).join('')}
+              ${stackSets.slice(-6).reverse().map(s=>gymRowHtml(s, false)).join('')}
             </table>`;
         }
 
@@ -649,6 +686,52 @@ function viewGym(gymSearchTerm){
         return block;
       }).join('')
     }
+
+    <div id="qa-modal" class="modal-overlay" style="display:none;">
+      <div class="modal-box">
+        <h3 id="qa-title" style="margin-top:0;">Quick add</h3>
+        <div class="row">
+          <div class="col"><label>Weight mode</label>
+            <select id="qa-unit">
+              <option value="kg">Total weight (kg)</option>
+              <option value="kg_per_side">Weight per side (kg)</option>
+              <option value="stack">Machine stack (1-20)</option>
+            </select>
+          </div>
+          <div class="col"><label>Reps</label><input id="qa-reps" type="number"/></div>
+        </div>
+        <div class="row" id="qa-fields-kg" style="margin-top:10px;">
+          <div class="col"><label>Weight (kg)</label><input id="qa-weight" type="number" step="0.5"/></div>
+        </div>
+        <div class="row" id="qa-fields-perside" style="margin-top:10px; display:none;">
+          <div class="col"><label>Weight per side (kg)</label><input id="qa-weight-perside" type="number" step="0.5"/></div>
+          <div class="col"><label>Bar weight (kg)</label><input id="qa-bar-weight" type="number" step="0.5"/></div>
+        </div>
+        <div class="row" id="qa-fields-stack" style="margin-top:10px; display:none;">
+          <div class="col"><label>Stack level</label><input id="qa-stack" type="number" min="1" max="20"/></div>
+        </div>
+        <div class="row" style="margin-top:10px;">
+          <div class="col"><label>Date</label><input id="qa-date" type="date"/></div>
+          <div class="col"><label>Session tag</label>
+            <select id="qa-session">
+              <option value="">No tag</option>
+              <option value="Push Day">Push Day</option>
+              <option value="Pull Day">Pull Day</option>
+              <option value="Legs Day">Legs Day</option>
+              <option value="Arms">Arms</option>
+              <option value="Shoulders">Shoulders</option>
+              <option value="Full Body">Full Body</option>
+              <option value="Cardio">Cardio</option>
+              <option value="Other">Other</option>
+            </select>
+          </div>
+        </div>
+        <div style="margin-top:16px; display:flex; gap:8px;">
+          <button id="qa-confirm">Add set</button>
+          <button class="secondary" id="qa-cancel">Cancel</button>
+        </div>
+      </div>
+    </div>
   `;
 }
 
@@ -889,6 +972,8 @@ function viewCalendar(){
 // ---------- ROUTING ----------
 let currentView = 'dashboard';
 let gymSearch = '';
+let editingGymId = null;
+let quickAddExercise = null;
 let assetFilter = 'all';
 let assetSearch = '';
 let calMonth = new Date().getMonth();
@@ -954,16 +1039,103 @@ function attachHandlers(){
       render();
     };
   });
-  document.querySelectorAll('[data-quickadd]').forEach(b=>{
+  document.querySelectorAll('[data-edit-gym]').forEach(b=>{
+    b.onclick = ()=>{
+      editingGymId = b.dataset.editGym;
+      render();
+    };
+  });
+  document.querySelectorAll('[data-cancel-gym]').forEach(b=>{
+    b.onclick = ()=>{
+      editingGymId = null;
+      render();
+    };
+  });
+  document.querySelectorAll('[data-save-gym]').forEach(b=>{
     b.onclick = async ()=>{
-      const source = state.gym.find(g=>g.id===b.dataset.quickadd);
-      if(!source) return;
-      const clone = {...source, id:uid(), date:todayStr()};
-      state.gym.push(clone);
+      const id = b.dataset.saveGym;
+      const entry = state.gym.find(g=>g.id===id);
+      if(!entry) return;
+      const unit = entry.unit || 'kg';
+      const dateEl = document.getElementById(`edit-date-${id}`);
+      const repsEl = document.getElementById(`edit-reps-${id}`);
+      if(dateEl && dateEl.value) entry.date = dateEl.value;
+      if(repsEl && repsEl.value) entry.reps = parseInt(repsEl.value);
+      if(unit === 'kg_per_side'){
+        const wpsEl = document.getElementById(`edit-weight-perside-${id}`);
+        const bwEl = document.getElementById(`edit-barweight-${id}`);
+        if(wpsEl && wpsEl.value) entry.weightPerSide = parseFloat(wpsEl.value);
+        if(bwEl && bwEl.value) entry.barWeight = parseFloat(bwEl.value);
+      }else{
+        const wEl = document.getElementById(`edit-weight-${id}`);
+        if(wEl && wEl.value) entry.weight = parseFloat(wEl.value);
+      }
+      editingGymId = null;
       await saveArr('gym:entries', state.gym);
       render();
     };
   });
+
+  // QUICK ADD MODAL
+  function setQaFieldVisibility(unit){
+    document.getElementById('qa-fields-kg').style.display = unit==='kg' ? 'flex' : 'none';
+    document.getElementById('qa-fields-perside').style.display = unit==='kg_per_side' ? 'flex' : 'none';
+    document.getElementById('qa-fields-stack').style.display = unit==='stack' ? 'flex' : 'none';
+  }
+  const qaUnit = document.getElementById('qa-unit');
+  if(qaUnit) qaUnit.onchange = (e)=> setQaFieldVisibility(e.target.value);
+
+  document.querySelectorAll('[data-quickadd]').forEach(b=>{
+    b.onclick = ()=>{
+      const source = state.gym.find(g=>g.id===b.dataset.quickadd);
+      if(!source) return;
+      quickAddExercise = source.exercise;
+      const unit = source.unit || 'kg';
+      document.getElementById('qa-title').textContent = 'Quick add \u2014 ' + source.exercise;
+      document.getElementById('qa-unit').value = unit;
+      document.getElementById('qa-reps').value = source.reps;
+      document.getElementById('qa-date').value = todayStr();
+      document.getElementById('qa-session').value = source.session || '';
+      setQaFieldVisibility(unit);
+      if(unit === 'kg') document.getElementById('qa-weight').value = source.weight;
+      if(unit === 'kg_per_side'){
+        document.getElementById('qa-weight-perside').value = source.weightPerSide;
+        document.getElementById('qa-bar-weight').value = source.barWeight;
+      }
+      if(unit === 'stack') document.getElementById('qa-stack').value = source.weight;
+      document.getElementById('qa-modal').style.display = 'flex';
+    };
+  });
+  const qaCancel = document.getElementById('qa-cancel');
+  if(qaCancel) qaCancel.onclick = ()=>{ document.getElementById('qa-modal').style.display = 'none'; };
+  const qaConfirm = document.getElementById('qa-confirm');
+  if(qaConfirm) qaConfirm.onclick = async ()=>{
+    const unit = document.getElementById('qa-unit').value;
+    const reps = parseInt(document.getElementById('qa-reps').value);
+    const date = document.getElementById('qa-date').value || todayStr();
+    const session = document.getElementById('qa-session').value;
+    if(!quickAddExercise || !reps) return;
+    let entry = {id:uid(), date, exercise:quickAddExercise, reps, unit, session};
+    if(unit === 'kg'){
+      const w = parseFloat(document.getElementById('qa-weight').value);
+      if(!w) return;
+      entry.weight = w;
+    }else if(unit === 'kg_per_side'){
+      const wps = parseFloat(document.getElementById('qa-weight-perside').value);
+      const bw = parseFloat(document.getElementById('qa-bar-weight').value) || 0;
+      if(!wps) return;
+      entry.weightPerSide = wps;
+      entry.barWeight = bw;
+    }else if(unit === 'stack'){
+      const s = parseFloat(document.getElementById('qa-stack').value);
+      if(!s) return;
+      entry.weight = s;
+    }
+    state.gym.push(entry);
+    await saveArr('gym:entries', state.gym);
+    document.getElementById('qa-modal').style.display = 'none';
+    render();
+  };
   const gSearch = document.getElementById('g-search');
   if(gSearch) gSearch.oninput = (e)=>{
     gymSearch = e.target.value;
