@@ -562,6 +562,7 @@ function gymRowHtml(s, isKgSection){
       <td>${weightFieldHtml}</td>
       <td><input type="number" id="edit-reps-${s.id}" value="${s.reps}" style="width:52px;"/></td>
       ${isKgSection ? `<td class="mono">${s.e1.toFixed(1)}kg</td>` : ''}
+      <td class="smallmuted">${s.muscleGroup||'&mdash;'}</td>
       <td class="smallmuted">${s.session||'&mdash;'}</td>
       <td style="display:flex; gap:6px;">
         <button data-save-gym="${s.id}" style="padding:3px 9px; font-size:10.5px;">Save</button>
@@ -574,6 +575,7 @@ function gymRowHtml(s, isKgSection){
     <td>${displayWeight(s)}</td>
     <td>${s.reps}</td>
     ${isKgSection ? `<td class="mono">${s.e1.toFixed(1)}kg</td>` : ''}
+    <td class="smallmuted">${s.muscleGroup||'&mdash;'}</td>
     <td class="smallmuted">${s.session||'&mdash;'}</td>
     <td style="display:flex; gap:6px;">
       <button class="secondary" data-edit-gym="${s.id}" style="padding:3px 9px; font-size:10.5px;">Edit</button>
@@ -582,16 +584,20 @@ function gymRowHtml(s, isKgSection){
   </tr>`;
 }
 
-function viewGym(gymSearchTerm){
+function viewGym(gymSearchTerm, muscleFilterVal){
   gymSearchTerm = (gymSearchTerm||'').toLowerCase();
+  muscleFilterVal = muscleFilterVal || 'all';
   const grouped = bestE1RMPerExercise();
   const exNames = Object.keys(grouped)
     .filter(n=> !gymSearchTerm || n.toLowerCase().includes(gymSearchTerm))
+    .filter(n=> muscleFilterVal==='all' || grouped[n].some(s=> s.muscleGroup === muscleFilterVal))
     .sort((a,b)=>{
       const lastA = Math.max(...grouped[a].map(s=> new Date(s.date).getTime()));
       const lastB = Math.max(...grouped[b].map(s=> new Date(s.date).getTime()));
       return lastB - lastA;
     });
+
+  const muscleOptions = ['Chest','Back','Shoulders','Biceps','Triceps','Legs','Core/Abs','Full Body','Other'];
 
   return `
     <h1 class="pagetitle">Gym Progress</h1>
@@ -624,6 +630,12 @@ function viewGym(gymSearchTerm){
       </div>
 
       <div class="row" style="margin-top:10px">
+        <div class="col"><label>Muscle group (optional)</label>
+          <select id="g-muscle">
+            <option value="">No muscle group</option>
+            ${muscleOptions.map(m=>`<option value="${m}">${m}</option>`).join('')}
+          </select>
+        </div>
         <div class="col"><label>Session tag (optional)</label>
           <select id="g-session">
             <option value="">No tag</option>
@@ -642,8 +654,15 @@ function viewGym(gymSearchTerm){
     </div>
 
     <div class="card">
-      <label>Search exercises</label>
-      <input id="g-search" placeholder="search exercise name..." value="${gymSearchTerm}"/>
+      <div class="row" style="align-items:end;">
+        <div class="col"><label>Search exercises</label><input id="g-search" placeholder="search exercise name..." value="${gymSearchTerm}"/></div>
+        <div class="col"><label>Filter by muscle group</label>
+          <select id="g-muscle-filter">
+            <option value="all" ${muscleFilterVal==='all'?'selected':''}>All muscle groups</option>
+            ${muscleOptions.map(m=>`<option value="${m}" ${muscleFilterVal===m?'selected':''}>${m}</option>`).join('')}
+          </select>
+        </div>
+      </div>
     </div>
 
     ${exNames.length===0? `<div class="card"><div class="empty">${gymSearchTerm ? 'No exercises match' : 'No sets logged yet'}</div></div>` :
@@ -667,7 +686,7 @@ function viewGym(gymSearchTerm){
             <div class="smallmuted" style="margin:6px 0 8px 0">Best est. 1RM: <span class="mono" style="color:var(--amber)">${best.toFixed(1)}kg</span> &nbsp;&bull;&nbsp; ${kgSets.length} sets logged</div>
             ${lineChart(kgSets.map(s=>s.e1), '#E63946')}
             <table style="margin-top:10px">
-              <tr><th>Date</th><th>Weight</th><th>Reps</th><th>Est. 1RM</th><th>Session</th><th></th></tr>
+              <tr><th>Date</th><th>Weight</th><th>Reps</th><th>Est. 1RM</th><th>Muscle</th><th>Session</th><th></th></tr>
               ${kgSets.slice(-6).reverse().map(s=>gymRowHtml(s, true)).join('')}
             </table>`;
         }
@@ -677,7 +696,7 @@ function viewGym(gymSearchTerm){
             <div class="smallmuted" style="margin:${kgSets.length?'16px':'6px'} 0 8px 0">Stack progression &nbsp;&bull;&nbsp; ${stackSets.length} sets logged (not converted to real weight)</div>
             ${lineChart(stackSets.map(s=>Number(s.weight)), '#F2F2F2')}
             <table style="margin-top:10px">
-              <tr><th>Date</th><th>Stack level</th><th>Reps</th><th>Session</th><th></th></tr>
+              <tr><th>Date</th><th>Stack level</th><th>Reps</th><th>Muscle</th><th>Session</th><th></th></tr>
               ${stackSets.slice(-6).reverse().map(s=>gymRowHtml(s, false)).join('')}
             </table>`;
         }
@@ -712,6 +731,14 @@ function viewGym(gymSearchTerm){
         </div>
         <div class="row" style="margin-top:10px;">
           <div class="col"><label>Date</label><input id="qa-date" type="date"/></div>
+          <div class="col"><label>Muscle group</label>
+            <select id="qa-muscle">
+              <option value="">No muscle group</option>
+              ${muscleOptions.map(m=>`<option value="${m}">${m}</option>`).join('')}
+            </select>
+          </div>
+        </div>
+        <div class="row" style="margin-top:10px;">
           <div class="col"><label>Session tag</label>
             <select id="qa-session">
               <option value="">No tag</option>
@@ -973,6 +1000,7 @@ function viewCalendar(){
 let currentView = 'dashboard';
 let gymSearch = '';
 let editingGymId = null;
+let muscleFilter = 'all';
 let quickAddExercise = null;
 let assetFilter = 'all';
 let assetSearch = '';
@@ -985,7 +1013,7 @@ function render(){
   renderTelemetry();
   const content = document.getElementById('content');
   if(currentView==='dashboard') content.innerHTML = viewDashboard();
-  else if(currentView==='gym') content.innerHTML = viewGym(gymSearch);
+  else if(currentView==='gym') content.innerHTML = viewGym(gymSearch, muscleFilter);
   else if(currentView==='assets') content.innerHTML = viewAssets(assetFilter, assetSearch);
   else if(currentView==='habits') content.innerHTML = viewHabits();
   else if(currentView==='journal') content.innerHTML = viewJournal();
@@ -1009,9 +1037,10 @@ function attachHandlers(){
     const reps = parseInt(document.getElementById('g-reps').value);
     const date = document.getElementById('g-date').value || todayStr();
     const session = document.getElementById('g-session').value.trim();
+    const muscleGroup = document.getElementById('g-muscle').value;
     if(!exercise || !reps) return;
 
-    let entry = {id:uid(), date, exercise, reps, unit, session};
+    let entry = {id:uid(), date, exercise, reps, unit, session, muscleGroup};
     if(unit==='kg'){
       const weight = parseFloat(document.getElementById('g-weight').value);
       if(!weight) return;
@@ -1096,6 +1125,7 @@ function attachHandlers(){
       document.getElementById('qa-reps').value = source.reps;
       document.getElementById('qa-date').value = todayStr();
       document.getElementById('qa-session').value = source.session || '';
+      document.getElementById('qa-muscle').value = source.muscleGroup || '';
       setQaFieldVisibility(unit);
       if(unit === 'kg') document.getElementById('qa-weight').value = source.weight;
       if(unit === 'kg_per_side'){
@@ -1114,8 +1144,9 @@ function attachHandlers(){
     const reps = parseInt(document.getElementById('qa-reps').value);
     const date = document.getElementById('qa-date').value || todayStr();
     const session = document.getElementById('qa-session').value;
+    const muscleGroup = document.getElementById('qa-muscle').value;
     if(!quickAddExercise || !reps) return;
-    let entry = {id:uid(), date, exercise:quickAddExercise, reps, unit, session};
+    let entry = {id:uid(), date, exercise:quickAddExercise, reps, unit, session, muscleGroup};
     if(unit === 'kg'){
       const w = parseFloat(document.getElementById('qa-weight').value);
       if(!w) return;
@@ -1142,6 +1173,11 @@ function attachHandlers(){
     render();
     const el = document.getElementById('g-search');
     if(el){ el.focus(); el.value = gymSearch; el.setSelectionRange(el.value.length, el.value.length); }
+  };
+  const gMuscleFilter = document.getElementById('g-muscle-filter');
+  if(gMuscleFilter) gMuscleFilter.onchange = (e)=>{
+    muscleFilter = e.target.value;
+    render();
   };
 
   // ASSETS
@@ -1281,12 +1317,17 @@ function showLoginScreen(){
       <div style="text-align:center;">
         <div style="font-family:'Space Grotesk',sans-serif; font-size:20px; font-weight:700; color:#F2F2F2; margin-bottom:6px;">Kurt // Systems</div>
         <div style="color:#8C8C8C; font-size:13px; margin-bottom:20px;">Sign in to sync your data across devices</div>
-        <button id="google-signin-btn" style="background:#E63946; color:#fff; border:none; padding:11px 22px; border-radius:6px; font-weight:600; cursor:pointer; font-size:13px;">Sign in with Google</button>
+        <button id="google-signin-btn" style="background:#E63946; color:#fff; border:none; padding:11px 22px; border-radius:6px; font-weight:600; cursor:pointer; font-size:13px; display:block; width:100%; margin-bottom:10px;">Sign in with Google</button>
+        <button id="guest-signin-btn" style="background:transparent; color:#8C8C8C; border:1px solid #333333; padding:10px 22px; border-radius:6px; font-weight:600; cursor:pointer; font-size:13px; display:block; width:100%;">Continue as Guest (testing only)</button>
+        <div style="color:#8C8C8C; font-size:11px; margin-top:12px; max-width:280px;">Guest data isn't linked to an account &mdash; it won't follow you to another device or browser, and may be lost if you clear your browser data.</div>
       </div>`;
     document.body.appendChild(overlay);
     document.getElementById('google-signin-btn').onclick = ()=>{
       const provider = new firebase.auth.GoogleAuthProvider();
       auth.signInWithPopup(provider).catch(err=>{ alert('Sign-in failed: '+err.message); });
+    };
+    document.getElementById('guest-signin-btn').onclick = ()=>{
+      auth.signInAnonymously().catch(err=>{ alert('Guest sign-in failed: '+err.message+'. Anonymous sign-in may need to be enabled in Firebase console (Authentication > Sign-in method > Anonymous).'); });
     };
   }
   overlay.style.display = 'flex';
@@ -1303,14 +1344,10 @@ function renderUserBadge(){
     badge.style.cssText = "margin-top:auto; padding:10px; border-top:1px solid var(--line); font-size:11px; color:var(--muted); display:flex; flex-direction:column; gap:6px;";
     document.getElementById('sidebar').appendChild(badge);
   }
-  badge.innerHTML = `<div style="color:var(--text); font-size:12px;">${currentUser.displayName || currentUser.email}</div><div style="cursor:pointer; color:var(--danger);" id="signout-btn">Sign out</div>`;
+  const label = currentUser.isAnonymous ? 'Guest session' : (currentUser.displayName || currentUser.email);
+  badge.innerHTML = `<div style="color:var(--text); font-size:12px;">${label}</div><div style="cursor:pointer; color:var(--danger);" id="signout-btn">Sign out</div>`;
   document.getElementById('signout-btn').onclick = ()=> auth.signOut();
 }
-
-// ============================================================
-// ACCESS LOCK - only this email may sign in. Change to your own Gmail.
-// ============================================================
-const ALLOWED_EMAIL = "bangayankurt@gmail.com";
 
 // ---------- init ----------
 (async function init(){
@@ -1322,11 +1359,6 @@ const ALLOWED_EMAIL = "bangayankurt@gmail.com";
   showLoginScreen();
   auth.onAuthStateChanged(async (user)=>{
     if(user){
-      if(user.email !== ALLOWED_EMAIL){
-        alert("This app is private and locked to one account. You're signed in as " + user.email + ", which isn't authorized.");
-        await auth.signOut();
-        return;
-      }
       currentUser = user;
       try{
         const snap = await db.collection('users').doc(user.uid).get();
