@@ -9,6 +9,7 @@
 <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore-compat.js"></script>
 <style>
 body{margin:0; padding:16px; background:#0B0D10; min-height:100vh; display:flex; align-items:flex-start; justify-content:center;}
+.table-wrap{overflow-x:auto; -webkit-overflow-scrolling:touch; margin-top:10px;}
 @media (max-width:700px){
   body{padding:0;}
   #app{border-radius:0; min-height:100vh; flex-direction:column;}
@@ -17,9 +18,20 @@ body{margin:0; padding:16px; background:#0B0D10; min-height:100vh; display:flex;
   .navbtn{white-space:nowrap; padding:8px 12px; flex-shrink:0;}
   #user-badge{margin-top:0 !important; flex-direction:row !important; align-items:center !important; border-top:none !important; padding:8px 12px !important; white-space:nowrap; flex-shrink:0;}
   #telemetry{overflow-x:auto;}
-  #content{padding:16px;}
+  #content{padding:16px 12px;}
   .row{flex-direction:column;}
   .row .col{min-width:0;}
+  .table-wrap table{min-width:620px;}
+  .card{padding:14px;}
+  .calgrid{gap:2px;}
+  .calgrid-labels{font-size:8.5px;}
+  .calnum{font-size:9px;}
+  .caldot{width:5px; height:5px;}
+  .cal-legend{gap:8px; font-size:10px;}
+  .cal-legend span{display:inline-flex; align-items:center;}
+  .modal-box{padding:16px; max-width:100%;}
+  h1.pagetitle{font-size:17px;}
+  .card h3{font-size:12px;}
 }
 @import url('https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@500;600;700&family=Inter:wght@400;500;600&family=JetBrains+Mono:wght@400;500;600&display=swap');
 
@@ -270,21 +282,24 @@ const FIELD_MAP = {
 };
 
 // ---------- storage helpers (local + optional cloud sync) ----------
+function localKey(key){
+  return (cloudEnabled && currentUser) ? `${currentUser.uid}:${key}` : key;
+}
 async function loadArr(key){
   try{
     if(cloudEnabled && remoteDoc){
       const field = FIELD_MAP[key];
       if(remoteDoc[field] !== undefined){
-        localStorage.setItem(key, JSON.stringify(remoteDoc[field]));
+        localStorage.setItem(localKey(key), JSON.stringify(remoteDoc[field]));
         return remoteDoc[field];
       }
     }
-    const raw = localStorage.getItem(key);
+    const raw = localStorage.getItem(localKey(key));
     return raw ? JSON.parse(raw) : [];
   }catch(e){ return []; }
 }
 async function saveArr(key, val){
-  localStorage.setItem(key, JSON.stringify(val));
+  localStorage.setItem(localKey(key), JSON.stringify(val));
   try{
     if(cloudEnabled && currentUser){
       const field = FIELD_MAP[key];
@@ -536,8 +551,9 @@ function bestE1RMPerExercise(){
     const unit = g.unit || 'kg';
     const total = computeTotalWeight({...g, unit});
     const e1 = (unit !== 'stack' && g.reps) ? epley(total, g.reps) : null;
+    const stackScore = (unit === 'stack' && g.reps) ? epley(Number(g.weight), g.reps) : null;
     if(!map[g.exercise]) map[g.exercise]=[];
-    map[g.exercise].push({...g, unit, total, e1});
+    map[g.exercise].push({...g, unit, total, e1, stackScore});
   });
   return map;
 }
@@ -561,7 +577,7 @@ function gymRowHtml(s, isKgSection){
       <td><input type="date" id="edit-date-${s.id}" value="${s.date}" style="width:135px;"/></td>
       <td>${weightFieldHtml}</td>
       <td><input type="number" id="edit-reps-${s.id}" value="${s.reps}" style="width:52px;"/></td>
-      ${isKgSection ? `<td class="mono">${s.e1.toFixed(1)}kg</td>` : ''}
+      ${isKgSection ? `<td class="mono">${s.e1.toFixed(1)}kg</td>` : `<td class="mono">${s.stackScore.toFixed(1)}</td>`}
       <td class="smallmuted">${s.muscleGroup||'&mdash;'}</td>
       <td class="smallmuted">${s.session||'&mdash;'}</td>
       <td style="display:flex; gap:6px;">
@@ -574,7 +590,7 @@ function gymRowHtml(s, isKgSection){
     <td>${fmtDate(s.date)}</td>
     <td>${displayWeight(s)}</td>
     <td>${s.reps}</td>
-    ${isKgSection ? `<td class="mono">${s.e1.toFixed(1)}kg</td>` : ''}
+    ${isKgSection ? `<td class="mono">${s.e1.toFixed(1)}kg</td>` : `<td class="mono">${s.stackScore.toFixed(1)}</td>`}
     <td class="smallmuted">${s.muscleGroup||'&mdash;'}</td>
     <td class="smallmuted">${s.session||'&mdash;'}</td>
     <td style="display:flex; gap:6px;">
@@ -685,20 +701,28 @@ function viewGym(gymSearchTerm, muscleFilterVal){
             ${isPR? '<span class="pr-badge">NEW PR</span>' : ''}
             <div class="smallmuted" style="margin:6px 0 8px 0">Best est. 1RM: <span class="mono" style="color:var(--amber)">${best.toFixed(1)}kg</span> &nbsp;&bull;&nbsp; ${kgSets.length} sets logged</div>
             ${lineChart(kgSets.map(s=>s.e1), '#E63946')}
-            <table style="margin-top:10px">
+            <div class="table-wrap">
+            <table>
               <tr><th>Date</th><th>Weight</th><th>Reps</th><th>Est. 1RM</th><th>Muscle</th><th>Session</th><th></th></tr>
               ${kgSets.slice(-6).reverse().map(s=>gymRowHtml(s, true)).join('')}
-            </table>`;
+            </table>
+            </div>`;
         }
 
         if(stackSets.length){
+          const bestScore = Math.max(...stackSets.map(s=>s.stackScore));
+          const latestStack = stackSets[stackSets.length-1];
+          const isStackPR = latestStack.stackScore === bestScore && stackSets.length>1;
           block += `
-            <div class="smallmuted" style="margin:${kgSets.length?'16px':'6px'} 0 8px 0">Stack progression &nbsp;&bull;&nbsp; ${stackSets.length} sets logged (not converted to real weight)</div>
-            ${lineChart(stackSets.map(s=>Number(s.weight)), '#F2F2F2')}
-            <table style="margin-top:10px">
-              <tr><th>Date</th><th>Stack level</th><th>Reps</th><th>Muscle</th><th>Session</th><th></th></tr>
+            ${isStackPR? '<span class="pr-badge">NEW PR</span>' : ''}
+            <div class="smallmuted" style="margin:${kgSets.length?'16px':'6px'} 0 8px 0">Stack progress score &nbsp;&bull;&nbsp; ${stackSets.length} sets logged &nbsp;&bull;&nbsp; <span title="Combines stack level and reps, same formula as est. 1RM, so it goes up whether you add reps or move up a stack level.">what's this?</span></div>
+            ${lineChart(stackSets.map(s=>s.stackScore), '#F2F2F2')}
+            <div class="table-wrap">
+            <table>
+              <tr><th>Date</th><th>Stack level</th><th>Reps</th><th>Score</th><th>Muscle</th><th>Session</th><th></th></tr>
               ${stackSets.slice(-6).reverse().map(s=>gymRowHtml(s, false)).join('')}
-            </table>`;
+            </table>
+            </div>`;
         }
 
         block += `</div>`;
