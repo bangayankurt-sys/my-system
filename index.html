@@ -237,6 +237,8 @@ tr:last-child td{border-bottom:none;}
     <div class="navbtn" data-view="habits"><span class="dot"></span>Habits/Mood/Sleep</div>
     <div class="navbtn" data-view="journal"><span class="dot"></span>Journal</div>
     <div class="navbtn" data-view="calendar"><span class="dot"></span>Calendar</div>
+    <div class="navbtn" data-view="tdee"><span class="dot"></span>TDEE &amp; Weight</div>
+    <div class="navbtn" data-view="weightlog"><span class="dot"></span>Weight Log</div>
   </div>
   <div id="main">
     <div id="telemetry"></div>
@@ -278,7 +280,11 @@ const FIELD_MAP = {
   'assets:list':'assets',
   'habits:names':'habitNames',
   'habits:entries':'habitEntries',
-  'journal:entries':'journal'
+  'journal:entries':'journal',
+  'tdee:profile':'tdeeProfile',
+  'tdee:logs':'tdeeLogs',
+  'weight:entries':'weightEntries',
+  'steps:entries':'stepsEntries'
 };
 
 // ---------- storage helpers (local + optional cloud sync) ----------
@@ -322,26 +328,81 @@ let state = {
   assets: [],    // {id,name,type,tags:[],notes,link}
   habitNames: ['Trained','Slept 7h+','Tracked macros','No junk food'],
   habitEntries: [], // {id,date,checked:[...names], mood, sleep}
-  journal: []    // {id,date,text}
+  journal: [],   // {id,date,text}
+  tdeeProfile: { age:'', gender:'male', height:'' }, // static TDEE inputs
+  tdeeLogs: [],   // {id,date,steps,weight,gym,gymMinutes,cardio,cardioMinutes,cardioIntensity,bmr,tdee}
+  weightEntries: [], // {id,date,weight}
+  stepsEntries: []   // {id,date,steps}
 };
 
 async function loadAll(){
-  const [g,a,hn,he,j] = await Promise.all([
+  const [g,a,hn,he,j,tp,tl,we,se] = await Promise.all([
     loadArr('gym:entries'),
     loadArr('assets:list'),
     loadArr('habits:names'),
     loadArr('habits:entries'),
-    loadArr('journal:entries')
+    loadArr('journal:entries'),
+    loadArr('tdee:profile'),
+    loadArr('tdee:logs'),
+    loadArr('weight:entries'),
+    loadArr('steps:entries')
   ]);
   state.gym = g;
   state.assets = a;
   state.habitNames = (hn && hn.length) ? hn : state.habitNames;
   state.habitEntries = he;
   state.journal = j;
+  state.tdeeProfile = (tp && typeof tp === 'object' && !Array.isArray(tp) && tp.height) ? tp : state.tdeeProfile;
+  state.tdeeLogs = tl;
+  state.weightEntries = we;
+  state.stepsEntries = se;
 }
 
 // ---------- e1RM ----------
 function epley(weight, reps){ return weight * (1 + reps/30); }
+
+// ---------- TDEE calculation ----------
+// Mifflin-St Jeor BMR equation
+function calcBMR(weightKg, heightCm, age, gender){
+  const base = 10*weightKg + 6.25*heightCm - 5*age;
+  return gender === 'female' ? base - 161 : base + 5;
+}
+
+// Step count -> NEAT activity multiplier (applied to BMR)
+function stepMultiplier(steps){
+  if(steps >= 12500) return 1.9;
+  if(steps >= 10000) return 1.725;
+  if(steps >= 7500) return 1.55;
+  if(steps >= 5000) return 1.375;
+  return 1.2;
+}
+
+// MET-based exercise calories: kcal = METs * 3.5 * weightKg / 200 * minutes
+const LIFTING_MET = 6.0; // vigorous resistance training
+const CARDIO_METS = { light: 5.5, moderate: 7.0, intense: 10.0 }; // light ~ Zone 2 (your 98-115bpm example)
+
+function exerciseCalories(met, weightKg, minutes){
+  return met * 3.5 * weightKg / 200 * minutes;
+}
+
+function computeTDEE({weightKg, heightCm, age, gender, steps, gym, gymMinutes, cardio, cardioMinutes, cardioIntensity}){
+  const bmr = calcBMR(weightKg, heightCm, age, gender);
+  const neatCalories = bmr * stepMultiplier(steps);
+  let exCals = 0;
+  if(gym) exCals += exerciseCalories(LIFTING_MET, weightKg, gymMinutes||0);
+  if(cardio) exCals += exerciseCalories(CARDIO_METS[cardioIntensity] || CARDIO_METS.light, weightKg, cardioMinutes||0);
+  const tdee = neatCalories + exCals;
+  return { bmr, neatCalories, exerciseCalories: exCals, tdee };
+}
+
+// ---------- Weight trend helpers ----------
+function trailing7DayAvg(sortedWeightEntries, index){
+  const end = index;
+  const start = Math.max(0, end-6);
+  const slice = sortedWeightEntries.slice(start, end+1);
+  if(slice.length < 3) return null; // need at least 3 points for a meaningful trailing average
+  return slice.reduce((s,e)=> s + Number(e.weight), 0) / slice.length;
+}
 
 // ---------- SVG mini line chart ----------
 function lineChart(values, color, w=560, h=80){
@@ -365,6 +426,36 @@ function lineChart(values, color, w=560, h=80){
     <polyline points="${pts}" fill="none" stroke="${color}" stroke-width="2" vector-effect="non-scaling-stroke"/>
     ${dots}
   </svg>`;
+}
+
+// series: [{values:[...], color:'#hex', dots:true/false, width:2}]
+function multiLineChart(series, w=560, h=100){
+  const allVals = series.flatMap(s=>s.values).filter(v=>v!==null && v!==undefined && !isNaN(v));
+  if(!allVals.length) return `<div class="empty">Not enough data yet</div>`;
+  const max = Math.max(...allVals);
+  const min = Math.min(...allVals);
+  const range = (max-min) || 1;
+  const pad = 8;
+  const maxLen = Math.max(...series.map(s=>s.values.length));
+  const step = maxLen>1 ? (w-pad*2)/(maxLen-1) : 0;
+
+  const parts = series.map(s=>{
+    const pts = s.values.map((v,i)=>{
+      if(v===null || v===undefined || isNaN(v)) return null;
+      const x = pad + i*step;
+      const y = h - pad - ((v-min)/range)*(h-pad*2);
+      return `${x},${y}`;
+    }).filter(Boolean).join(' ');
+    const dots = s.dots===false ? '' : s.values.map((v,i)=>{
+      if(v===null || v===undefined || isNaN(v)) return '';
+      const x = pad + i*step;
+      const y = h - pad - ((v-min)/range)*(h-pad*2);
+      return `<circle cx="${x}" cy="${y}" r="2" fill="${s.color}"/>`;
+    }).join('');
+    return `<polyline points="${pts}" fill="none" stroke="${s.color}" stroke-width="${s.width||2}" vector-effect="non-scaling-stroke" ${s.dashed?'stroke-dasharray="4,3"':''}/>${dots}`;
+  }).join('');
+
+  return `<svg class="svgchart" viewBox="0 0 ${w} ${h}" preserveAspectRatio="none">${parts}</svg>`;
 }
 
 // ---------- telemetry strip ----------
@@ -1020,6 +1111,226 @@ function viewCalendar(){
   `;
 }
 
+// ---------- TDEE & WEIGHT ----------
+function tdeeRowHtml(w, sortedEntries, idx){
+  const isEditing = editingWeightId === w.id;
+  const prevWeight = idx>0 ? Number(sortedEntries[idx-1].weight) : null;
+  const delta = prevWeight!==null ? Number(w.weight)-prevWeight : null;
+  const deltaHtml = delta===null ? '&mdash;' : `<span style="color:${delta>0?'var(--amber)':(delta<0?'var(--cyan)':'var(--muted)')}">${delta>0?'+':''}${delta.toFixed(1)}kg</span>`;
+  if(isEditing){
+    return `<tr>
+      <td><input type="date" id="edit-wdate-${w.id}" value="${w.date}" style="width:135px;"/></td>
+      <td><input type="number" step="0.1" id="edit-wweight-${w.id}" value="${w.weight}" style="width:70px;"/></td>
+      <td>${deltaHtml}</td>
+      <td style="display:flex; gap:6px;">
+        <button data-save-weight="${w.id}" style="padding:3px 9px; font-size:10.5px;">Save</button>
+        <button class="secondary" data-cancel-weight="${w.id}" style="padding:3px 9px; font-size:10.5px;">Cancel</button>
+      </td>
+    </tr>`;
+  }
+  return `<tr>
+    <td>${fmtDate(w.date)}</td>
+    <td class="mono">${w.weight}kg</td>
+    <td>${deltaHtml}</td>
+    <td style="display:flex; gap:6px;">
+      <button class="secondary" data-edit-weight="${w.id}" style="padding:3px 9px; font-size:10.5px;">Edit</button>
+      <button class="danger" data-del-weight="${w.id}" style="padding:3px 9px; font-size:10.5px;">Delete</button>
+    </td>
+  </tr>`;
+}
+
+function viewTDEE(){
+  const p = state.tdeeProfile || {};
+  const sortedWeights = [...state.weightEntries].sort((a,b)=> new Date(a.date)-new Date(b.date));
+  const latestWeight = sortedWeights.length ? Number(sortedWeights[sortedWeights.length-1].weight) : null;
+
+  const sortedLogs = [...state.tdeeLogs].sort((a,b)=> new Date(b.date)-new Date(a.date));
+  const latestLog = sortedLogs[0];
+
+  // weight trend: last 30 days, daily + trailing 7-day avg
+  const last30 = sortedWeights.filter(w=> new Date(w.date) >= new Date(daysAgo(30)));
+  const dailyVals = last30.map(w=>Number(w.weight));
+  const avgVals = last30.map((w,i)=> trailing7DayAvg(last30, i));
+
+  // this week vs last week average
+  const thisWeek = sortedWeights.filter(w=> new Date(w.date) >= new Date(daysAgo(7)));
+  const lastWeek = sortedWeights.filter(w=> new Date(w.date) >= new Date(daysAgo(14)) && new Date(w.date) < new Date(daysAgo(7)));
+  const thisWeekAvg = thisWeek.length ? thisWeek.reduce((s,w)=>s+Number(w.weight),0)/thisWeek.length : null;
+  const lastWeekAvg = lastWeek.length ? lastWeek.reduce((s,w)=>s+Number(w.weight),0)/lastWeek.length : null;
+  const weekDelta = (thisWeekAvg!==null && lastWeekAvg!==null) ? thisWeekAvg-lastWeekAvg : null;
+
+  return `
+    <h1 class="pagetitle">TDEE &amp; Weight Trend</h1>
+    <p class="pagesub">Estimate daily calorie burn and track weight over time</p>
+
+    <div class="card">
+      <h3>Your profile</h3>
+      <div class="row">
+        <div class="col"><label>Age</label><input id="td-age" type="number" value="${p.age||''}" placeholder="22"/></div>
+        <div class="col"><label>Gender</label>
+          <select id="td-gender">
+            <option value="male" ${p.gender==='male'?'selected':''}>Male</option>
+            <option value="female" ${p.gender==='female'?'selected':''}>Female</option>
+          </select>
+        </div>
+        <div class="col"><label>Height (cm)</label><input id="td-height" type="number" value="${p.height||''}" placeholder="170"/></div>
+      </div>
+      <div class="smallmuted" style="margin-top:8px;">Weight is pulled from your latest logged weight below${latestWeight!==null ? ` (currently <span class="mono">${latestWeight}kg</span>)` : ' (log one below first)'}.</div>
+      <div style="margin-top:12px"><button id="td-save-profile" class="secondary">Save profile</button></div>
+    </div>
+
+    <div class="card">
+      <h3>Log today's activity</h3>
+      <div class="row">
+        <div class="col"><label>Date</label><input id="td-date" type="date" value="${todayStr()}"/></div>
+        <div class="col"><label>Weight today (kg)</label><input id="td-weight" type="number" step="0.1" value="${latestWeight!==null?latestWeight:''}" placeholder="60"/></div>
+        <div class="col"><label>Steps today</label><input id="td-steps" type="number" placeholder="e.g. 8500"/></div>
+      </div>
+
+      <div class="smallmuted" style="margin:14px 0 6px 0;">Quick presets (still editable after)</div>
+      <div class="chip-row">
+        <span class="chip" data-tdee-preset="gym_cardio">Gym + Cardio</span>
+        <span class="chip" data-tdee-preset="gym_only">Gym only</span>
+        <span class="chip" data-tdee-preset="cardio_only">Cardio only</span>
+        <span class="chip" data-tdee-preset="steps_only">8-10k Steps only</span>
+        <span class="chip" data-tdee-preset="steps_gym">8-10k Steps + Gym</span>
+      </div>
+
+      <div class="row" style="margin-top:14px; align-items:end;">
+        <div class="col"><label><input type="checkbox" id="td-gym" style="width:auto; margin-right:6px;"/>Weight lifting today</label></div>
+        <div class="col"><label>Duration (min)</label><input id="td-gym-minutes" type="number" value="60"/></div>
+      </div>
+      <div class="row" style="margin-top:10px; align-items:end;">
+        <div class="col"><label><input type="checkbox" id="td-cardio" style="width:auto; margin-right:6px;"/>Cardio today</label></div>
+        <div class="col"><label>Duration (min)</label><input id="td-cardio-minutes" type="number" value="50"/></div>
+        <div class="col"><label>Intensity</label>
+          <select id="td-cardio-intensity">
+            <option value="light">Light (Zone 2, ~&lt;120bpm)</option>
+            <option value="moderate">Moderate (~120-150bpm)</option>
+            <option value="intense">Intense (~150bpm+)</option>
+          </select>
+        </div>
+      </div>
+
+      <div style="margin-top:14px"><button id="td-calculate">Calculate &amp; log today</button></div>
+    </div>
+
+    ${latestLog ? `
+    <div class="card">
+      <h3>Latest result &mdash; ${fmtDate(latestLog.date)}</h3>
+      <div style="font-size:13px; line-height:2;">
+        <div>BMR: <span class="mono">${Math.round(latestLog.bmr)} kcal</span></div>
+        <div>+ NEAT (from ${latestLog.steps} steps): <span class="mono">${Math.round(latestLog.neatCalories)} kcal</span></div>
+        <div>+ Exercise calories: <span class="mono">${Math.round(latestLog.exerciseCalories)} kcal</span>${latestLog.gym?' (lifting)':''}${latestLog.cardio?' (+cardio)':''}</div>
+        <div style="margin-top:6px; font-size:16px; font-weight:700; color:var(--amber);">Estimated TDEE: ${Math.round(latestLog.tdee)} kcal</div>
+      </div>
+      <div class="smallmuted" style="margin-top:10px;">To lose weight: eat ~${Math.round(latestLog.tdee-400)}-${Math.round(latestLog.tdee-250)} kcal. To maintain: ~${Math.round(latestLog.tdee)} kcal. To gain: ~${Math.round(latestLog.tdee+250)}-${Math.round(latestLog.tdee+400)} kcal. (Real TDEE varies day to day &mdash; treat this as an estimate, not an exact number.)</div>
+    </div>` : ''}
+
+    <div class="card">
+      <h3>Weight trend (last 30 days)</h3>
+      ${dailyVals.length ? `
+        <div class="smallmuted" style="margin-bottom:6px;"><span style="color:var(--amber);">&bull;</span> Daily weight &nbsp;&nbsp; <span style="color:var(--cyan);">- - -</span> 7-day trailing average</div>
+        ${multiLineChart([
+          {values: dailyVals, color:'#E63946', dots:true, width:1.5},
+          {values: avgVals, color:'#F2F2F2', dots:false, width:2, dashed:true}
+        ])}
+      ` : `<div class="empty">Log your weight below to see your trend</div>`}
+
+      <div class="row" style="margin-top:14px;">
+        <div class="col"><div class="smallmuted">This week avg</div><div class="mono" style="font-size:16px;">${thisWeekAvg!==null ? thisWeekAvg.toFixed(1)+'kg' : '&mdash;'}</div></div>
+        <div class="col"><div class="smallmuted">Last week avg</div><div class="mono" style="font-size:16px;">${lastWeekAvg!==null ? lastWeekAvg.toFixed(1)+'kg' : '&mdash;'}</div></div>
+        <div class="col"><div class="smallmuted">Change</div><div class="mono" style="font-size:16px; color:${weekDelta>0?'var(--amber)':(weekDelta<0?'var(--cyan)':'var(--text)')}">${weekDelta!==null ? (weekDelta>0?'+':'')+weekDelta.toFixed(1)+'kg' : '&mdash;'}</div></div>
+      </div>
+
+      <div class="table-wrap">
+      <table style="margin-top:14px;">
+        <tr><th>Date</th><th>Weight</th><th>Change</th><th></th></tr>
+        ${sortedWeights.slice(-10).reverse().map((w)=>{
+          const idx = sortedWeights.findIndex(e=>e.id===w.id);
+          return tdeeRowHtml(w, sortedWeights, idx);
+        }).join('')}
+      </table>
+      </div>
+    </div>
+
+    ${sortedLogs.length ? `
+    <div class="card">
+      <h3>TDEE log history</h3>
+      <div class="table-wrap">
+      <table>
+        <tr><th>Date</th><th>Steps</th><th>Gym</th><th>Cardio</th><th>BMR</th><th>TDEE</th><th></th></tr>
+        ${sortedLogs.slice(0,10).map(l=>`<tr>
+          <td>${fmtDate(l.date)}</td>
+          <td>${l.steps}</td>
+          <td>${l.gym ? 'Yes ('+l.gymMinutes+'m)' : 'No'}</td>
+          <td>${l.cardio ? 'Yes ('+l.cardioMinutes+'m, '+l.cardioIntensity+')' : 'No'}</td>
+          <td class="mono">${Math.round(l.bmr)}</td>
+          <td class="mono" style="color:var(--amber);">${Math.round(l.tdee)}</td>
+          <td><button class="danger" data-del-tdeelog="${l.id}" style="padding:3px 9px; font-size:10.5px;">Delete</button></td>
+        </tr>`).join('')}
+      </table>
+      </div>
+    </div>` : ''}
+  `;
+}
+
+// ---------- WEIGHT LOG (simple, no activity questions) ----------
+function viewWeightLog(){
+  const sortedWeights = [...state.weightEntries].sort((a,b)=> new Date(a.date)-new Date(b.date));
+
+  const last30 = sortedWeights.filter(w=> new Date(w.date) >= new Date(daysAgo(30)));
+  const dailyVals = last30.map(w=>Number(w.weight));
+  const avgVals = last30.map((w,i)=> trailing7DayAvg(last30, i));
+
+  const thisWeek = sortedWeights.filter(w=> new Date(w.date) >= new Date(daysAgo(7)));
+  const lastWeek = sortedWeights.filter(w=> new Date(w.date) >= new Date(daysAgo(14)) && new Date(w.date) < new Date(daysAgo(7)));
+  const thisWeekAvg = thisWeek.length ? thisWeek.reduce((s,w)=>s+Number(w.weight),0)/thisWeek.length : null;
+  const lastWeekAvg = lastWeek.length ? lastWeek.reduce((s,w)=>s+Number(w.weight),0)/lastWeek.length : null;
+  const weekDelta = (thisWeekAvg!==null && lastWeekAvg!==null) ? thisWeekAvg-lastWeekAvg : null;
+
+  return `
+    <h1 class="pagetitle">Weight Log</h1>
+    <p class="pagesub">Just your weight and trend &mdash; nothing else to fill in</p>
+
+    <div class="card">
+      <h3>Log today's weight</h3>
+      <div class="row">
+        <div class="col"><label>Date</label><input id="wl-date" type="date" value="${todayStr()}"/></div>
+        <div class="col"><label>Weight (kg)</label><input id="wl-weight" type="number" step="0.1" placeholder="60"/></div>
+      </div>
+      <div style="margin-top:12px"><button id="wl-save">Save weight</button></div>
+    </div>
+
+    <div class="card">
+      <h3>Weight trend (last 30 days)</h3>
+      ${dailyVals.length ? `
+        <div class="smallmuted" style="margin-bottom:6px;"><span style="color:var(--amber);">&bull;</span> Daily weight &nbsp;&nbsp; <span style="color:var(--cyan);">- - -</span> 7-day trailing average</div>
+        ${multiLineChart([
+          {values: dailyVals, color:'#E63946', dots:true, width:1.5},
+          {values: avgVals, color:'#F2F2F2', dots:false, width:2, dashed:true}
+        ])}
+      ` : `<div class="empty">Log your weight above to see your trend</div>`}
+
+      <div class="row" style="margin-top:14px;">
+        <div class="col"><div class="smallmuted">This week avg</div><div class="mono" style="font-size:16px;">${thisWeekAvg!==null ? thisWeekAvg.toFixed(1)+'kg' : '&mdash;'}</div></div>
+        <div class="col"><div class="smallmuted">Last week avg</div><div class="mono" style="font-size:16px;">${lastWeekAvg!==null ? lastWeekAvg.toFixed(1)+'kg' : '&mdash;'}</div></div>
+        <div class="col"><div class="smallmuted">Change</div><div class="mono" style="font-size:16px; color:${weekDelta>0?'var(--amber)':(weekDelta<0?'var(--cyan)':'var(--text)')}">${weekDelta!==null ? (weekDelta>0?'+':'')+weekDelta.toFixed(1)+'kg' : '&mdash;'}</div></div>
+      </div>
+
+      <div class="table-wrap">
+      <table style="margin-top:14px;">
+        <tr><th>Date</th><th>Weight</th><th>Change</th><th></th></tr>
+        ${sortedWeights.slice().reverse().map((w)=>{
+          const idx = sortedWeights.findIndex(e=>e.id===w.id);
+          return tdeeRowHtml(w, sortedWeights, idx);
+        }).join('')}
+      </table>
+      </div>
+    </div>
+  `;
+}
+
 // ---------- ROUTING ----------
 let currentView = 'dashboard';
 let gymSearch = '';
@@ -1032,6 +1343,7 @@ let calMonth = new Date().getMonth();
 let habitFormDate = null;
 let calYear = new Date().getFullYear();
 let selectedCalDate = null;
+let editingWeightId = null;
 
 function render(){
   renderTelemetry();
@@ -1042,6 +1354,8 @@ function render(){
   else if(currentView==='habits') content.innerHTML = viewHabits();
   else if(currentView==='journal') content.innerHTML = viewJournal();
   else if(currentView==='calendar') content.innerHTML = viewCalendar();
+  else if(currentView==='tdee') content.innerHTML = viewTDEE();
+  else if(currentView==='weightlog') content.innerHTML = viewWeightLog();
   attachHandlers();
   document.querySelectorAll('.navbtn').forEach(b=> b.classList.toggle('active', b.dataset.view===currentView));
 }
@@ -1316,6 +1630,121 @@ function attachHandlers(){
   document.querySelectorAll('[data-cal-date]').forEach(cell=>{
     cell.onclick = ()=>{
       selectedCalDate = cell.dataset.calDate;
+      render();
+    };
+  });
+
+  // TDEE & WEIGHT
+  const tdSaveProfile = document.getElementById('td-save-profile');
+  if(tdSaveProfile) tdSaveProfile.onclick = async ()=>{
+    const age = parseInt(document.getElementById('td-age').value);
+    const gender = document.getElementById('td-gender').value;
+    const height = parseFloat(document.getElementById('td-height').value);
+    if(!age || !height) return;
+    state.tdeeProfile = { age, gender, height };
+    await saveArr('tdee:profile', state.tdeeProfile);
+    render();
+  };
+
+  document.querySelectorAll('[data-tdee-preset]').forEach(chip=>{
+    chip.onclick = ()=>{
+      const preset = chip.dataset.tdeePreset;
+      const gymEl = document.getElementById('td-gym');
+      const cardioEl = document.getElementById('td-cardio');
+      const stepsEl = document.getElementById('td-steps');
+      if(preset==='gym_cardio'){ gymEl.checked = true; cardioEl.checked = true; }
+      else if(preset==='gym_only'){ gymEl.checked = true; cardioEl.checked = false; }
+      else if(preset==='cardio_only'){ gymEl.checked = false; cardioEl.checked = true; }
+      else if(preset==='steps_only'){ gymEl.checked = false; cardioEl.checked = false; if(!stepsEl.value) stepsEl.value = 9000; }
+      else if(preset==='steps_gym'){ gymEl.checked = true; cardioEl.checked = false; if(!stepsEl.value) stepsEl.value = 9000; }
+    };
+  });
+
+  const tdCalculate = document.getElementById('td-calculate');
+  if(tdCalculate) tdCalculate.onclick = async ()=>{
+    const p = state.tdeeProfile;
+    if(!p || !p.age || !p.height){ alert('Fill in and save your profile (age, gender, height) first.'); return; }
+    const date = document.getElementById('td-date').value || todayStr();
+    const weight = parseFloat(document.getElementById('td-weight').value);
+    const steps = parseInt(document.getElementById('td-steps').value) || 0;
+    const gym = document.getElementById('td-gym').checked;
+    const gymMinutes = parseInt(document.getElementById('td-gym-minutes').value) || 0;
+    const cardio = document.getElementById('td-cardio').checked;
+    const cardioMinutes = parseInt(document.getElementById('td-cardio-minutes').value) || 0;
+    const cardioIntensity = document.getElementById('td-cardio-intensity').value;
+    if(!weight){ alert('Enter your weight today.'); return; }
+
+    const result = computeTDEE({
+      weightKg: weight, heightCm: p.height, age: p.age, gender: p.gender,
+      steps, gym, gymMinutes, cardio, cardioMinutes, cardioIntensity
+    });
+
+    // save/replace tdee log for this date
+    state.tdeeLogs = state.tdeeLogs.filter(l=>l.date!==date);
+    state.tdeeLogs.push({
+      id: uid(), date, steps, weight, gym, gymMinutes, cardio, cardioMinutes, cardioIntensity,
+      bmr: result.bmr, neatCalories: result.neatCalories, exerciseCalories: result.exerciseCalories, tdee: result.tdee
+    });
+    await saveArr('tdee:logs', state.tdeeLogs);
+
+    // save/replace weight entry for this date
+    state.weightEntries = state.weightEntries.filter(w=>w.date!==date);
+    state.weightEntries.push({ id: uid(), date, weight });
+    await saveArr('weight:entries', state.weightEntries);
+
+    // save/replace steps entry for this date
+    if(steps){
+      state.stepsEntries = state.stepsEntries.filter(s=>s.date!==date);
+      state.stepsEntries.push({ id: uid(), date, steps });
+      await saveArr('steps:entries', state.stepsEntries);
+    }
+
+    render();
+  };
+
+  document.querySelectorAll('[data-del-tdeelog]').forEach(b=>{
+    b.onclick = async ()=>{
+      state.tdeeLogs = state.tdeeLogs.filter(l=>l.id!==b.dataset.delTdeelog);
+      await saveArr('tdee:logs', state.tdeeLogs);
+      render();
+    };
+  });
+
+  const wlSave = document.getElementById('wl-save');
+  if(wlSave) wlSave.onclick = async ()=>{
+    const date = document.getElementById('wl-date').value || todayStr();
+    const weight = parseFloat(document.getElementById('wl-weight').value);
+    if(!weight) return;
+    state.weightEntries = state.weightEntries.filter(w=>w.date!==date);
+    state.weightEntries.push({ id: uid(), date, weight });
+    await saveArr('weight:entries', state.weightEntries);
+    render();
+  };
+
+  document.querySelectorAll('[data-edit-weight]').forEach(b=>{
+    b.onclick = ()=>{ editingWeightId = b.dataset.editWeight; render(); };
+  });
+  document.querySelectorAll('[data-cancel-weight]').forEach(b=>{
+    b.onclick = ()=>{ editingWeightId = null; render(); };
+  });
+  document.querySelectorAll('[data-save-weight]').forEach(b=>{
+    b.onclick = async ()=>{
+      const id = b.dataset.saveWeight;
+      const entry = state.weightEntries.find(w=>w.id===id);
+      if(!entry) return;
+      const dateEl = document.getElementById(`edit-wdate-${id}`);
+      const weightEl = document.getElementById(`edit-wweight-${id}`);
+      if(dateEl && dateEl.value) entry.date = dateEl.value;
+      if(weightEl && weightEl.value) entry.weight = parseFloat(weightEl.value);
+      editingWeightId = null;
+      await saveArr('weight:entries', state.weightEntries);
+      render();
+    };
+  });
+  document.querySelectorAll('[data-del-weight]').forEach(b=>{
+    b.onclick = async ()=>{
+      state.weightEntries = state.weightEntries.filter(w=>w.id!==b.dataset.delWeight);
+      await saveArr('weight:entries', state.weightEntries);
       render();
     };
   });
